@@ -1,8 +1,10 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import type { Blueprint, BlueprintStepType } from "@/lib/mock-sessions";
 import type { Dict } from "@/lib/i18n";
+import { hasBpmnSpike } from "@/lib/bpmn-spike";
+import { BpmnViewer } from "@/components/bpmn-viewer";
 
 const TYPE_STYLE: Record<BlueprintStepType, string> = {
   io: "bg-surface-muted/50 backdrop-blur-sm text-text-secondary border-border border-l-4 border-l-step-io",
@@ -10,6 +12,140 @@ const TYPE_STYLE: Record<BlueprintStepType, string> = {
   human_review:
     "bg-surface-muted/50 backdrop-blur-sm text-text-secondary border-border border-l-4 border-l-step-human",
 };
+
+function StepListFlow({
+  blueprint,
+  t,
+  typeLabel,
+}: {
+  blueprint: Blueprint;
+  t: Dict;
+  typeLabel: Record<BlueprintStepType, string>;
+}) {
+  return (
+    <>
+      {blueprint.goal && (
+        <p className="text-sm leading-relaxed text-text-secondary mb-4">
+          <span className="font-medium text-text-strong">
+            {t.wsBlueprintGoal}:
+          </span>{" "}
+          {blueprint.goal}
+        </p>
+      )}
+      <ol>
+        {blueprint.steps.map((s, i) => (
+          <li key={s.id}>
+            <div
+              className={`rounded-lg border px-3 py-2.5 shadow-xs ${TYPE_STYLE[s.type]}`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium">{s.name}</span>
+                <span className="text-xs font-semibold uppercase tracking-wide opacity-70">
+                  {typeLabel[s.type]}
+                  {s.component ? ` · ${s.component}` : ""}
+                </span>
+              </div>
+              {s.description && (
+                <p className="text-xs opacity-80 mt-0.5">{s.description}</p>
+              )}
+            </div>
+            {i < blueprint.steps.length - 1 && (
+              <div className="mx-auto h-4 w-px bg-border" aria-hidden />
+            )}
+          </li>
+        ))}
+      </ol>
+    </>
+  );
+}
+
+function WorkflowFlowTab({
+  sessionId,
+  blueprint,
+  t,
+  typeLabel,
+}: {
+  sessionId: string;
+  blueprint: Blueprint;
+  t: Dict;
+  typeLabel: Record<BlueprintStepType, string>;
+}) {
+  const spike = hasBpmnSpike(sessionId);
+  const [bpmnXml, setBpmnXml] = useState<string | null>(null);
+  const [loading, setLoading] = useState(spike);
+  const [fetchError, setFetchError] = useState(false);
+
+  useEffect(() => {
+    if (!spike) return;
+    let cancelled = false;
+    setLoading(true);
+    setFetchError(false);
+
+    fetch(`/api/sessions/${sessionId}/bpmn`)
+      .then((res) => {
+        if (!res.ok) throw new Error("bpmn unavailable");
+        return res.text();
+      })
+      .then((xml) => {
+        if (!cancelled) setBpmnXml(xml);
+      })
+      .catch(() => {
+        if (!cancelled) setFetchError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, spike]);
+
+  if (!spike) {
+    return (
+      <StepListFlow blueprint={blueprint} t={t} typeLabel={typeLabel} />
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4 h-full min-h-0">
+      <div className="flex items-center justify-between gap-2 shrink-0">
+        <span className="badge bg-surface-muted border border-border text-text-muted text-xs">
+          {t.wsBpmnReadOnly}
+        </span>
+      </div>
+
+      {loading && (
+        <p className="text-sm text-text-muted">{t.wsBpmnLoading}</p>
+      )}
+      {fetchError && (
+        <p className="text-sm text-danger-text" role="alert">
+          {t.wsBpmnError}
+        </p>
+      )}
+      {bpmnXml && !fetchError && (
+        <div className="flex-1 min-h-[420px]">
+          <BpmnViewer
+            xml={bpmnXml}
+            ariaLabel={t.wsTabFlow}
+            loadErrorLabel={t.wsBpmnError}
+          />
+        </div>
+      )}
+
+      <p className="text-xs text-text-muted shrink-0">{t.wsBpmnSpikeNote}</p>
+
+      <details className="shrink-0 rounded-lg border border-border bg-surface-muted/40 px-3 py-2">
+        <summary className="text-sm font-medium text-text-secondary cursor-pointer">
+          {t.wsTabFlow} — mock step list
+        </summary>
+        <div className="mt-3 max-h-48 overflow-auto">
+          <StepListFlow blueprint={blueprint} t={t} typeLabel={typeLabel} />
+        </div>
+      </details>
+    </div>
+  );
+}
 
 type Tab = "flow" | "json" | "poc";
 type PocStatus = "idle" | "running" | "success" | "failed";
@@ -115,39 +251,12 @@ export function WorkspacePanel({
           >
             {key === "flow" && (
               <div className="h-full overflow-auto">
-                {blueprint.goal && (
-                  <p className="text-sm leading-relaxed text-text-secondary mb-4">
-                    <span className="font-medium text-text-strong">
-                      {t.wsBlueprintGoal}:
-                    </span>{" "}
-                    {blueprint.goal}
-                  </p>
-                )}
-                <ol>
-                  {blueprint.steps.map((s, i) => (
-                    <li key={s.id}>
-                      <div
-                        className={`rounded-lg border px-3 py-2.5 shadow-xs ${TYPE_STYLE[s.type]}`}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-sm font-medium">{s.name}</span>
-                          <span className="text-xs font-semibold uppercase tracking-wide opacity-70">
-                            {typeLabel[s.type]}
-                            {s.component ? ` · ${s.component}` : ""}
-                          </span>
-                        </div>
-                        {s.description && (
-                          <p className="text-xs opacity-80 mt-0.5">
-                            {s.description}
-                          </p>
-                        )}
-                      </div>
-                      {i < blueprint.steps.length - 1 && (
-                        <div className="mx-auto h-4 w-px bg-border" aria-hidden />
-                      )}
-                    </li>
-                  ))}
-                </ol>
+                <WorkflowFlowTab
+                  sessionId={sessionId}
+                  blueprint={blueprint}
+                  t={t}
+                  typeLabel={typeLabel}
+                />
               </div>
             )}
 

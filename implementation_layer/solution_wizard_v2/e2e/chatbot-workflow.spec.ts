@@ -20,10 +20,14 @@ test.describe("Asiakaspalvelun chatbot (mock)", () => {
 
     const workspacePanel = page.locator('[role="tabpanel"]:visible');
 
-    // Workflow tab — RAG chatbot blueprint steps from mock seed data.
+    // Workflow tab — spike BPMN from V1 blueprint (bpmn-js); mock steps in collapsible details.
+    await expect(workspacePanel.getByText("Read-only BPMN (bpmn-js)")).toBeVisible();
+    await expect(workspacePanel.locator(".djs-container")).toBeVisible({
+      timeout: 15_000,
+    });
+    await workspacePanel.getByText("mock step list").click();
     await expect(workspacePanel.getByText("Tietohaku (RAG)")).toBeVisible();
     await expect(workspacePanel.getByText("pgvector")).toBeVisible();
-    await expect(workspacePanel.getByText("Vastauksen generointi")).toBeVisible();
 
     // Chat — mock SSE reply references current phase (step 6 = Komponenttivalinta).
     const chatPanel = page.getByLabel("Keskustelu");

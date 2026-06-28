@@ -61,6 +61,10 @@ export type Dict = {
   wsStepAi: string;
   wsStepHuman: string;
   wsStepIo: string;
+  wsBpmnLoading: string;
+  wsBpmnError: string;
+  wsBpmnSpikeNote: string;
+  wsBpmnReadOnly: string;
   pocRun: string;
   pocRunning: string;
   pocRerun: string;
@@ -141,6 +145,11 @@ const fi: Dict = {
   wsStepAi: "AI-vaihe",
   wsStepHuman: "Ihmistarkistus",
   wsStepIo: "I/O",
+  wsBpmnLoading: "Ladataan BPMN-kaaviota…",
+  wsBpmnError: "BPMN-kaavion lataus epäonnistui.",
+  wsBpmnSpikeNote:
+    "Spike (#40): kaavio generoitu V1 blueprintistä (incident reporting). Mock-sessionin step-lista näkyy alla vertailuna.",
+  wsBpmnReadOnly: "Read-only BPMN (bpmn-js)",
   pocRun: "Aja PoC",
   pocRunning: "Ajetaan…",
   pocRerun: "Aja PoC uudelleen",
@@ -241,6 +250,11 @@ const en: Dict = {
   wsStepAi: "AI step",
   wsStepHuman: "Human review",
   wsStepIo: "I/O",
+  wsBpmnLoading: "Loading BPMN diagram…",
+  wsBpmnError: "Failed to load BPMN diagram.",
+  wsBpmnSpikeNote:
+    "Spike (#40): diagram generated from V1 blueprint (incident reporting). Step list below for comparison with mock session.",
+  wsBpmnReadOnly: "Read-only BPMN (bpmn-js)",
   pocRun: "Run PoC",
   pocRunning: "Running…",
   pocRerun: "Run PoC again",
