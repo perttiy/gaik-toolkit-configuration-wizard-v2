@@ -44,6 +44,7 @@ BPMN is **derived**, never hand-edited. The V1 generator already targets bpmn-js
 | Viewer | `components/bpmn-viewer.tsx` — client-side `NavigatedViewer`, fit-viewport |
 | Workflow tab | `components/workspace-panel.tsx` — BPMN + collapsible mock step list |
 | Session gate | `lib/bpmn-spike.ts` — `ses_chatbot`, `ses_laskut` |
+| Phase gate | **Step ≥ 8** only (`BPMN_VISUAL_STEP` / onboarding phase “Visuaalinen työnkulku”) — before that, Workflow tab shows the text step list |
 
 Other mock sessions keep the step-list placeholder until Sprint 2 wires active blueprint → generator.
 

@@ -1,10 +1,18 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useId, useState } from "react";
 import type { Blueprint, BlueprintStepType } from "@/lib/mock-sessions";
 import type { Dict } from "@/lib/i18n";
-import { hasBpmnSpike } from "@/lib/bpmn-spike";
-import { BpmnViewer } from "@/components/bpmn-viewer";
+import { shouldShowBpmnSpike } from "@/lib/bpmn-spike";
+
+const BpmnDiagramPanel = dynamic(
+  () =>
+    import("@/components/bpmn-diagram-panel").then((m) => ({
+      default: m.BpmnDiagramPanel,
+    })),
+  { ssr: false },
+);
 
 const TYPE_STYLE: Record<BlueprintStepType, string> = {
   io: "bg-surface-muted/50 backdrop-blur-sm text-text-secondary border-border border-l-4 border-l-step-io",
@@ -61,22 +69,31 @@ function StepListFlow({
 
 function WorkflowFlowTab({
   sessionId,
+  sessionTitle,
+  wizardStep,
   blueprint,
   t,
   typeLabel,
 }: {
   sessionId: string;
+  sessionTitle: string;
+  wizardStep: number;
   blueprint: Blueprint;
   t: Dict;
   typeLabel: Record<BlueprintStepType, string>;
 }) {
-  const spike = hasBpmnSpike(sessionId);
+  const showBpmn = shouldShowBpmnSpike(sessionId, wizardStep);
   const [bpmnXml, setBpmnXml] = useState<string | null>(null);
-  const [loading, setLoading] = useState(spike);
+  const [loading, setLoading] = useState(showBpmn);
   const [fetchError, setFetchError] = useState(false);
 
   useEffect(() => {
-    if (!spike) return;
+    if (!showBpmn) {
+      setBpmnXml(null);
+      setFetchError(false);
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setFetchError(false);
@@ -99,9 +116,9 @@ function WorkflowFlowTab({
     return () => {
       cancelled = true;
     };
-  }, [sessionId, spike]);
+  }, [sessionId, showBpmn]);
 
-  if (!spike) {
+  if (!showBpmn) {
     return (
       <StepListFlow blueprint={blueprint} t={t} typeLabel={typeLabel} />
     );
@@ -109,12 +126,6 @@ function WorkflowFlowTab({
 
   return (
     <div className="flex flex-col gap-4 h-full min-h-0">
-      <div className="flex items-center justify-between gap-2 shrink-0">
-        <span className="badge bg-surface-muted border border-border text-text-muted text-xs">
-          {t.wsBpmnReadOnly}
-        </span>
-      </div>
-
       {loading && (
         <p className="text-sm text-text-muted">{t.wsBpmnLoading}</p>
       )}
@@ -123,17 +134,6 @@ function WorkflowFlowTab({
           {t.wsBpmnError}
         </p>
       )}
-      {bpmnXml && !fetchError && (
-        <div className="flex-1 min-h-[420px]">
-          <BpmnViewer
-            xml={bpmnXml}
-            ariaLabel={t.wsTabFlow}
-            loadErrorLabel={t.wsBpmnError}
-          />
-        </div>
-      )}
-
-      <p className="text-xs text-text-muted shrink-0">{t.wsBpmnSpikeNote}</p>
 
       <details className="shrink-0 rounded-lg border border-border bg-surface-muted/40 px-3 py-2">
         <summary className="text-sm font-medium text-text-secondary cursor-pointer">
@@ -143,6 +143,30 @@ function WorkflowFlowTab({
           <StepListFlow blueprint={blueprint} t={t} typeLabel={typeLabel} />
         </div>
       </details>
+
+      {bpmnXml && !fetchError && (
+        <BpmnDiagramPanel
+          xml={bpmnXml}
+          ariaLabel={t.wsTabFlow}
+          loadErrorLabel={t.wsBpmnError}
+          readOnlyLabel={t.wsBpmnReadOnly}
+          openLabel={t.wsBpmnOpen}
+          closeLabel={t.wsBpmnClose}
+          dialogTitle={`${t.wsBpmnDialogTitle} - ${sessionTitle}`}
+          hintLabel={t.wsBpmnInlineHint}
+          zoomInLabel={t.wsBpmnZoomIn}
+          zoomOutLabel={t.wsBpmnZoomOut}
+          overviewLabel={t.wsBpmnOverview}
+          readableLabel={t.wsBpmnReadable}
+          toolbarLabel={t.wsBpmnToolbar}
+          themeLabel={t.wsBpmnThemeLabel}
+          themeLightLabel={t.wsBpmnThemeLight}
+          themeDarkLabel={t.wsBpmnThemeDark}
+          themeGaikLabel={t.wsBpmnThemeGaik}
+        />
+      )}
+
+      <p className="text-xs text-text-muted shrink-0">{t.wsBpmnSpikeNote}</p>
     </div>
   );
 }
@@ -154,10 +178,14 @@ const TABS: Tab[] = ["flow", "json", "poc"];
 
 export function WorkspacePanel({
   sessionId,
+  sessionTitle,
+  wizardStep,
   blueprint,
   t,
 }: {
   sessionId: string;
+  sessionTitle: string;
+  wizardStep: number;
   blueprint: Blueprint;
   t: Dict;
 }) {
@@ -253,6 +281,8 @@ export function WorkspacePanel({
               <div className="h-full overflow-auto">
                 <WorkflowFlowTab
                   sessionId={sessionId}
+                  sessionTitle={sessionTitle}
+                  wizardStep={wizardStep}
                   blueprint={blueprint}
                   t={t}
                   typeLabel={typeLabel}
