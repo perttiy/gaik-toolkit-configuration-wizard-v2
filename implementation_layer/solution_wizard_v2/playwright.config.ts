@@ -2,6 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 const PORT = process.env.PLAYWRIGHT_PORT ?? "3000";
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${PORT}`;
+const skipWebServer = process.env.PLAYWRIGHT_SKIP_WEBSERVER === "true";
 
 export default defineConfig({
   testDir: "./e2e",
@@ -16,14 +17,18 @@ export default defineConfig({
     trace: "on-first-retry",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
-  webServer: {
-    command: "npm run dev",
-    url: `${baseURL}/login`,
-    reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
-    env: {
-      ...process.env,
-      NEXT_PUBLIC_DEV_AUTH: "true",
-    },
-  },
+  ...(skipWebServer
+    ? {}
+    : {
+        webServer: {
+          command: "npm run dev",
+          url: `${baseURL}/login`,
+          reuseExistingServer: !process.env.CI,
+          timeout: 120_000,
+          env: {
+            ...process.env,
+            NEXT_PUBLIC_DEV_AUTH: "true",
+          },
+        },
+      }),
 });

@@ -199,7 +199,7 @@ const fi: Dict = {
   saved: "Tallennettu",
   gateWaiting: "Gate odottaa hyväksyntää",
   skipToContent: "Siirry pääsisältöön",
-  sessionNameLabel: "Session nimi",
+  sessionNameLabel: "Sessionin nimi",
   chatInputLabel: "Viesti wizardille",
   hideChat: "Piilota keskustelu",
   showChat: "Näytä keskustelu",

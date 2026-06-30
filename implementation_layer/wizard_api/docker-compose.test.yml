@@ -1,0 +1,63 @@
+# Test profile — see scripts/docker-test.sh
+services:
+  test-api:
+    profiles: [test]
+    build:
+      context: .
+      target: dev
+    environment:
+      WIZARD_DATABASE_URL: postgresql+psycopg://wizard:wizard@postgres:5432/wizard
+      WIZARD_SESSION_OUTPUT_ROOT: /tmp/wizard-test-sessions
+    command: sh -c "alembic upgrade head && pytest -v --tb=short -ra --capture=no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  test-ui:
+    profiles: [test]
+    build:
+      context: ../solution_wizard_v2
+      dockerfile: Dockerfile.dev
+    environment:
+      ESLINT_USE_FLAT_CONFIG: "false"
+      NEXT_PUBLIC_DEV_AUTH: "true"
+      NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: ci-encryption-key-32-characters!!
+    command: sh -c "npm run test && ESLINT_USE_FLAT_CONFIG=false npm run lint && npm run build"
+
+  wizard-ui-e2e:
+    profiles: [test]
+    build:
+      context: ../solution_wizard_v2
+      dockerfile: Dockerfile.dev
+    environment:
+      NEXT_PUBLIC_DEV_AUTH: "true"
+      NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: ci-encryption-key-32-characters!!
+    command: sh -c "npm run dev -- -H 0.0.0.0 -p 3000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 10s
+      retries: 24
+      start_period: 45s
+
+  test-e2e:
+    profiles: [test]
+    build:
+      context: ../solution_wizard_v2
+      dockerfile: Dockerfile.dev
+    environment:
+      CI: "true"
+      PLAYWRIGHT_SKIP_WEBSERVER: "true"
+      PLAYWRIGHT_BASE_URL: http://wizard-ui-e2e:3000
+      NEXT_PUBLIC_DEV_AUTH: "true"
+      NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: ci-encryption-key-32-characters!!
+    command: npm run test:e2e
+    depends_on:
+      wizard-ui-e2e:
+        condition: service_healthy

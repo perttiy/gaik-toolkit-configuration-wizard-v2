@@ -9,7 +9,7 @@ Erillinen Next.js-prototyyppi GAIK Solution Wizardin web-UI:sta. Sisältää:
 - **Design-systeemi**: yhtenäinen ammattimainen ilme (teal-brandi `#0d9488`, slate-neutraalit). Semanttiset väri-/varjo-/radius-tokenit `app/globals.css`:n `@theme`-lohkossa (esim. `bg-surface`, `text-text-muted`, `bg-brand`, status-/gate-tokenit, `term-*`). Käytä näitä tokeneita, älä raakoja Tailwind-värejä, jotta ilme pysyy yhtenäisenä.
 - **Kielivalinnan fi/en**: kevyt eväste-pohjainen i18n, vaihto headerin FI/EN-valitsimesta. Toimii server-renderöinnissä ja säilyy session yli.
 
-> **Mock-data:** session-tila elää tällä hetkellä `lib/mock-sessions.ts`:ssä dev-serverin muistissa (nollautuu uudelleenkäynnistyksessä). Kentät vastaavat suunniteltua tietomallia (S1-1 `wizard_sessions`, S1-2 `blueprint_versions`), jotta oikea persistenssi (Supabase/Postgres tai FastAPI) voidaan kytkeä samaan malliin myöhemmin.
+> **Mock-data:** without `WIZARD_API_URL`, session state lives in `lib/mock-sessions.ts` (in-memory). With `WIZARD_API_URL=http://localhost:8100`, `lib/sessions.ts` persists via `wizard_api` + Postgres. See `wizard_api/docker-compose.yml` for the full Sprint 1 stack.
 
 Tämä on prototyyppi näytille, ei vielä toiminnallinen wizard (chat, BPMN ja PoC ovat placeholdereita). Pino vastaa GAIK demo-appia (Next.js + Supabase) niin että sen voi myöhemmin siirtää demo-appin laajennokseksi.
 
@@ -69,9 +69,20 @@ lib/
 middleware.ts         Next.js middleware -kytkentä
 ```
 
+## Testit ja laatu
+
+```bash
+npm run test          # unit (vitest)
+npm run test:e2e      # UI (Playwright)
+npm run test:all      # molemmat
+ESLINT_USE_FLAT_CONFIG=false npm run lint
+```
+
+Koko stack + CI: [`../WIZARD-DEV.md`](../WIZARD-DEV.md). Tietoturva: [`docs/SECURITY.md`](docs/SECURITY.md).
+
 ## Seuraavat askeleet
 
-- Korvaa `mock-sessions.ts` oikealla persistenssillä (Supabase/Postgres tai FastAPI `wizard_api`), sama tietomalli
+- ~~Korvaa `mock-sessions.ts` oikealla persistenssillä~~ → `WIZARD_API_URL` + `lib/sessions.ts` (Sprint 1)
 - Chat: kytke SSE-endpointin mock-vastaus oikeaan agenttiin (Claude Agent SDK, Sprint 2)
 - Työnkulku: korvaa kevyt vuokaavio interaktiivisella bpmn-js-editorilla + JSON-synkronointi (Sprint 2–3)
 - Tuotantokirjautuminen (HAKA / Entra ID) Supabasen sijaan, jos tilaaja niin päättää

@@ -7,12 +7,12 @@ import { signOut } from "@/app/login/actions";
 import { ChatDock } from "@/components/chat-dock";
 import { WorkspacePanel } from "@/components/workspace-panel";
 import { advance, regress, approve } from "./actions";
+import { getSessionForUser } from "@/lib/session-access";
 import {
-  getSession,
   PHASE_COUNT,
   isGateStep,
   type GateStatus,
-} from "@/lib/mock-sessions";
+} from "@/lib/sessions";
 
 const GATE_BADGE: Record<GateStatus, string> = {
   locked: "badge-gate bg-neutral-bg border-neutral-border text-neutral-text",
@@ -29,7 +29,7 @@ export default async function SessionPage({
   const { id } = await params;
   const user = await getCurrentUser();
   const { locale, t } = await getI18n();
-  const session = getSession(id);
+  const session = user ? await getSessionForUser(id, user.email) : undefined;
 
   if (!session) notFound();
 

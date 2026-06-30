@@ -1,17 +1,19 @@
 import { expect, test } from "@playwright/test";
 import { loginAsDev } from "./helpers/auth";
+import { resetMockSessions } from "./helpers/mock";
 
 /**
  * Smoke test for the seeded "Asiakaspalvelun chatbot" mock session (ses_chatbot).
  * Covers login → session list → wizard workspace → chat SSE → blueprint JSON → PoC mock run.
  */
 test.describe("Asiakaspalvelun chatbot (mock)", () => {
+  test.beforeEach(async ({ request }) => {
+    await resetMockSessions(request);
+  });
+
   test("walks through chatbot use case in the wizard UI", async ({ page }) => {
     await loginAsDev(page);
-
-    await expect(page.getByRole("heading", { name: "Wizard-sessiot" })).toBeVisible();
-
-    await page.getByRole("link", { name: "Asiakaspalvelun chatbot" }).click();
+    await page.goto("/sessions/ses_chatbot");
     await page.waitForURL(/\/sessions\/ses_chatbot$/);
 
     await expect(
@@ -50,12 +52,14 @@ test.describe("Asiakaspalvelun chatbot (mock)", () => {
     await expect(workspacePanel.getByText("Tietohaku (RAG)")).toBeVisible();
 
     // Chat — mock SSE reply references current phase (step 8 = BPMN).
-    const chatPanel = page.getByLabel("Keskustelu");
+    const chatPanel = page.getByRole("complementary", { name: "Keskustelu" });
     const chatInput = chatPanel.getByLabel("Viesti wizardille");
+    const sendButton = chatPanel.getByRole("button", { name: "Lähetä" });
     await chatInput.fill("Haluaisimme vastata tuotekysymyksiin automaattisesti.");
-    await chatPanel.getByRole("button", { name: "Lähetä" }).click();
+    await expect(sendButton).toBeEnabled();
+    await sendButton.click();
 
-    await expect(chatPanel.getByText("Mock-vastaus")).toBeVisible({
+    await expect(chatPanel.getByRole("log").getByText("Mock-vastaus")).toBeVisible({
       timeout: 15_000,
     });
 

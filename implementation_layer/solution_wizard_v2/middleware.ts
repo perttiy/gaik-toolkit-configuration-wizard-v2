@@ -6,7 +6,10 @@ export async function middleware(request: NextRequest) {
   // Dev mode: simple cookie check, no Supabase.
   if (DEV_AUTH) {
     const hasSession = request.cookies.has(DEV_COOKIE);
-    if (!hasSession && !request.nextUrl.pathname.startsWith("/login")) {
+    const path = request.nextUrl.pathname;
+    const isPublic =
+      path.startsWith("/login") || path.startsWith("/api/dev/");
+    if (!hasSession && !isPublic) {
       const url = request.nextUrl.clone();
       url.pathname = "/login";
       return NextResponse.redirect(url);

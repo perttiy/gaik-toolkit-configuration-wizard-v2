@@ -172,7 +172,8 @@ function seedSession(
 // real content. Owner = dev account so it shows in dev mode.
 const DEV_OWNER = "dev@gaik.local";
 
-const sessions: WizardSession[] = [
+function buildSeedSessions(): WizardSession[] {
+  return [
   seedSession(
     "ses_chatbot",
     DEV_OWNER,
@@ -305,7 +306,23 @@ const sessions: WizardSession[] = [
       { id: "output", name: "Shortlist", type: "io", description: "Valitut eteenpäin" },
     ],
   }),
-];
+  ];
+}
+
+type MockGlobal = typeof globalThis & { __wizardMockSessions?: WizardSession[] };
+
+const mockGlobal = globalThis as MockGlobal;
+if (!mockGlobal.__wizardMockSessions) {
+  mockGlobal.__wizardMockSessions = buildSeedSessions();
+}
+const sessions = mockGlobal.__wizardMockSessions;
+
+/** Dev/test: restore seeded sessions (e.g. between E2E runs). */
+export function resetMockSessions(): void {
+  const fresh = buildSeedSessions();
+  sessions.length = 0;
+  sessions.push(...fresh);
+}
 
 // --- Read operations --------------------------------------------------------
 

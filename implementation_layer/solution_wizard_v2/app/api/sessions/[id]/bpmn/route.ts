@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { NextRequest } from "next/server";
 import { BPMN_SPIKE_ASSET, hasBpmnSpike } from "@/lib/bpmn-spike";
-import { getSession } from "@/lib/mock-sessions";
+import { requireOwnedSession } from "@/lib/session-access";
 
 export const dynamic = "force-dynamic";
 
@@ -11,8 +11,8 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const session = getSession(id);
-  if (!session) {
+  const owned = await requireOwnedSession(id);
+  if (!owned) {
     return new Response("Session not found", { status: 404 });
   }
   if (!hasBpmnSpike(id)) {

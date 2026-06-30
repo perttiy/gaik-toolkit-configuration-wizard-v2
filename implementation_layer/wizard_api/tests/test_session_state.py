@@ -11,14 +11,14 @@ from wizard_api.session_state import (
 
 def test_validate_step_accepts_range() -> None:
     validate_step(1)
-    validate_step(12)
+    validate_step(13)
 
 
 def test_validate_step_rejects_out_of_range() -> None:
     with pytest.raises(ValueError, match="step must be between"):
         validate_step(0)
     with pytest.raises(ValueError, match="step must be between"):
-        validate_step(13)
+        validate_step(14)
 
 
 def test_validate_gate_statuses_rejects_unknown_key() -> None:

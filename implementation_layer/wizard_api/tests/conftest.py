@@ -7,7 +7,7 @@ from helpers import postgres_available
 from wizard_api.config import get_database_url
 from wizard_api.db import get_db
 from wizard_api.main import app
-from wizard_api.models import Base, WizardSession
+from wizard_api.models import Base, BlueprintVersion, WizardSession
 
 requires_postgres = pytest.mark.skipif(not postgres_available(), reason="Postgres not available")
 
@@ -27,6 +27,7 @@ def db_session(db_engine):
     try:
         yield session
     finally:
+        session.query(BlueprintVersion).delete()
         session.query(WizardSession).delete()
         session.commit()
         session.close()
