@@ -39,8 +39,10 @@ Varmista:
 
 | Kenttä | Arvo |
 |--------|------|
-| Sähköposti | `dev@gaik.local` |
-| Salasana | `gaik` |
+| Sähköposti | Salasana |
+|------------|----------|
+| `dev@gaik.local` | `gaik` |
+| `dev2@gaik.local` | `gaik2` |
 
 Docker-stackissa `NEXT_PUBLIC_DEV_AUTH=true` — ei Supabasea.
 
@@ -84,9 +86,11 @@ curl -s http://localhost:8100/sessions/SESSION_ID | jq .
 
 | Ympäristö | `WIZARD_API_URL` | Sessiot |
 |-----------|------------------|---------|
-| Docker Compose (yllä) | asetettu | Postgres, UUID-sessiot |
+| Docker Compose (`dev-stack.sh`) | asetettu | Postgres, UUID-sessiot |
 | `npm run dev` ilman API:a | ei | In-memory mock (`ses_chatbot` jne.) |
 | Paikallinen API + UI | `http://localhost:8100` | Postgres |
+
+**Stack E2E** (Postgres + molemmat käyttäjät + API-restart): `cd implementation_layer/wizard_api && ./scripts/docker-test.sh --step stack-e2e`
 
 ### 8. Ongelmatilanteet
 

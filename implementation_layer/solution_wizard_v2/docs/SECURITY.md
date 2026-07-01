@@ -3,7 +3,7 @@
 ## Authentication
 
 - **UI:** Routes protected by `middleware.ts` (Supabase or `NEXT_PUBLIC_DEV_AUTH` cookie).
-- **Dev auth** (`dev@gaik.local` / `gaik`) is for local/demo only. **Never enable `NEXT_PUBLIC_DEV_AUTH` in production.**
+- **Dev auth** (`dev@gaik.local` / `gaik`, `dev2@gaik.local` / `gaik2`) is for local/demo only. **Never enable `NEXT_PUBLIC_DEV_AUTH` in production.**
 
 ## Session isolation (US-S1-01)
 

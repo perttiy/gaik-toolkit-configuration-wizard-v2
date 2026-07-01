@@ -17,7 +17,7 @@
     "test:all": "npm run test && npm run test:e2e",
     "setup": "npm ci",
     "dev:api": "cd ../wizard_api && ./scripts/dev-api.sh",
-    "dev:stack": "cd ../wizard_api && ./scripts/dev-stack.sh",
+    "dev:stack": "cd ../wizard_api && ./scripts/dev-stack.sh"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",

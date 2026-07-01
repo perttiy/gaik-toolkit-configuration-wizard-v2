@@ -22,3 +22,7 @@ def test_list_sessions_isolated_by_user(client) -> None:
     ids = [s["id"] for s in list_a.json()["sessions"]]
     assert create_a.json()["id"] in ids
     assert create_b.json()["id"] not in ids
+
+
+def test_test_hooks_disabled_by_default(client) -> None:
+    assert client.post("/test/shutdown").status_code == 404
