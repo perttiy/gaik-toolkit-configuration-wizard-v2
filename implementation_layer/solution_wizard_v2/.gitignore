@@ -23,6 +23,8 @@ next-env.d.ts
 /docs/*.png
 /docs/generate-demo-script-pdf*.py
 /docs/generate-timesheet-pdf*.py
+# Customer-delivered BPMN reference models (Dimitry / GAIK) — local dev only
+/public/bpmn/official/
 /test-results/
 /playwright-report/
 /blob-report/
