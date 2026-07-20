@@ -3,7 +3,8 @@ services:
   test-api:
     profiles: [test]
     build:
-      context: .
+      context: ..
+      dockerfile: wizard_api/Dockerfile
       target: dev
     environment:
       WIZARD_DATABASE_URL: postgresql+psycopg://wizard:wizard@postgres:5432/wizard
@@ -65,7 +66,8 @@ services:
   wizard-api-e2e:
     profiles: [stack-e2e]
     build:
-      context: .
+      context: ..
+      dockerfile: wizard_api/Dockerfile
       target: production
     environment:
       WIZARD_DATABASE_URL: postgresql+psycopg://wizard:wizard@postgres:5432/wizard

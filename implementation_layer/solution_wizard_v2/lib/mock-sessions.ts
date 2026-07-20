@@ -427,3 +427,18 @@ export function approveGate(id: string): WizardSession | undefined {
   }
   return advanceSession(id);
 }
+
+export function updateBlueprint(
+  id: string,
+  blueprint: Blueprint,
+  note = "BPMN canvas sync",
+): WizardSession | undefined {
+  const s = getSession(id);
+  if (!s) return undefined;
+  s.blueprint = blueprint;
+  const v = s.versions.length + 1;
+  s.versions.push({ version: v, createdAt: now(), note });
+  s.activeVersion = v;
+  s.updatedAt = now();
+  return s;
+}

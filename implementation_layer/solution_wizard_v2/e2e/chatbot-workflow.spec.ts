@@ -23,7 +23,7 @@ test.describe("Asiakaspalvelun chatbot (mock)", () => {
     const workspacePanel = page.locator('[role="tabpanel"]:visible');
 
     // Step 6 — before phase 8: text step list only, no BPMN yet.
-    await expect(workspacePanel.getByRole("button", { name: "Avaa työnkulku" })).toHaveCount(0);
+    await expect(workspacePanel.getByText("V2 aloitettu")).toHaveCount(0);
     await expect(workspacePanel.getByText("Tietohaku (RAG)")).toBeVisible();
     await expect(workspacePanel.getByText("pgvector")).toBeVisible();
 
@@ -38,18 +38,14 @@ test.describe("Asiakaspalvelun chatbot (mock)", () => {
     );
     expect(bpmnResponse.status()).toBe(200);
 
-    await expect(workspacePanel.getByRole("button", { name: "Avaa työnkulku" })).toBeVisible();
-    await workspacePanel.getByRole("button", { name: "Avaa työnkulku" }).click();
-    const dialog = page.getByRole("dialog");
-    await expect(dialog).toBeVisible();
-    await expect(dialog.locator(".bpmn-viewer-themed .djs-container")).toBeVisible({
-      timeout: 15_000,
-    });
-    await expect(dialog.getByRole("button", { name: "Luettava", pressed: true })).toBeVisible();
-    await dialog.getByRole("button", { name: "Sulje" }).click();
-    await expect(dialog).toBeHidden();
-    await workspacePanel.getByText("mock step list").click();
-    await expect(workspacePanel.getByText("Tietohaku (RAG)")).toBeVisible();
+    await expect(workspacePanel.getByText("V2 aloitettu")).toBeVisible();
+    await expect(workspacePanel.getByRole("button", { name: "Tallenna → JSON" })).toBeVisible();
+    await expect(
+      workspacePanel.locator(".bpmn-viewer-themed .djs-container"),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(
+      workspacePanel.getByRole("button", { name: "Koko prosessi" }),
+    ).toBeVisible();
 
     // Chat — mock SSE reply references current phase (step 8 = BPMN).
     const chatPanel = page.getByRole("complementary", { name: "Keskustelu" });

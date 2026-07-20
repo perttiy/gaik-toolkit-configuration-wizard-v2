@@ -64,9 +64,13 @@ export type Dict = {
   wsBpmnLoading: string;
   wsBpmnError: string;
   wsBpmnSpikeNote: string;
+  wsBpmnV2Started: string;
   wsBpmnReadOnly: string;
-  wsBpmnOpen: string;
-  wsBpmnClose: string;
+  wsBpmnEditable: string;
+  wsBpmnSave: string;
+  wsBpmnSaving: string;
+  wsBpmnSaveError: string;
+  wsBpmnSaved: string;
   wsBpmnDialogTitle: string;
   wsBpmnInlineHint: string;
   wsBpmnZoomIn: string;
@@ -78,6 +82,11 @@ export type Dict = {
   wsBpmnThemeLight: string;
   wsBpmnThemeDark: string;
   wsBpmnThemeGaik: string;
+  wsBpmnPropertiesTitle: string;
+  wsBpmnPropertiesEmpty: string;
+  wsBpmnPropertiesName: string;
+  wsBpmnPropertiesType: string;
+  wsBpmnPropertiesId: string;
   pocRun: string;
   pocRunning: string;
   pocRerun: string;
@@ -161,13 +170,17 @@ const fi: Dict = {
   wsBpmnLoading: "Ladataan BPMN-kaaviota…",
   wsBpmnError: "BPMN-kaavion lataus epäonnistui.",
   wsBpmnSpikeNote:
-    "Spike (#40): kaavio generoitu V1 blueprintistä (incident reporting). Mock-sessionin step-lista näkyy alla vertailuna.",
+    "V2 BPMN (#34): generoitu blueprint-JSONista (V1 bpmn_generator). Tallenna synkkaa canvas → JSON → BPMN.",
+  wsBpmnV2Started: "V2 aloitettu",
   wsBpmnReadOnly: "Vain katselu",
-  wsBpmnOpen: "Avaa työnkulku",
-  wsBpmnClose: "Sulje",
+  wsBpmnEditable: "Muokattava",
+  wsBpmnSave: "Tallenna → JSON",
+  wsBpmnSaving: "Tallennetaan…",
+  wsBpmnSaveError: "Tallennus epäonnistui",
+  wsBpmnSaved: "Tallennettu",
   wsBpmnDialogTitle: "Visuaalinen työnkulku (BPMN)",
   wsBpmnInlineHint:
-    "Avaa koko näytön tilaan. Luettava-näkymä zoomaa tekstit selkeiksi; Koko prosessi näyttää koko kaavion. Minikartta oikeassa alakulmassa.",
+    "Muokkaa kaaviota bpmn-js Modelerilla. Koko prosessi -näkymä mahtuu alueelle; voit scrollata sivua ja panna kaaviota hiirellä. Tallenna synkkaa JSONiin.",
   wsBpmnZoomIn: "Lähennä",
   wsBpmnZoomOut: "Loitonna",
   wsBpmnOverview: "Koko prosessi",
@@ -177,6 +190,11 @@ const fi: Dict = {
   wsBpmnThemeLight: "Vaalea — häikäisylle",
   wsBpmnThemeDark: "Musta-valkoinen",
   wsBpmnThemeGaik: "GAIK v2",
+  wsBpmnPropertiesTitle: "Ominaisuudet",
+  wsBpmnPropertiesEmpty: "Valitse tehtävä tai dataobjekti kaaviosta.",
+  wsBpmnPropertiesName: "Nimi",
+  wsBpmnPropertiesType: "Tyyppi",
+  wsBpmnPropertiesId: "Id",
   pocRun: "Aja PoC",
   pocRunning: "Ajetaan…",
   pocRerun: "Aja PoC uudelleen",
@@ -280,13 +298,17 @@ const en: Dict = {
   wsBpmnLoading: "Loading BPMN diagram…",
   wsBpmnError: "Failed to load BPMN diagram.",
   wsBpmnSpikeNote:
-    "Spike (#40): diagram generated from V1 blueprint (incident reporting). Step list below for comparison with mock session.",
+    "V2 BPMN (#34): generated from blueprint JSON (V1 bpmn_generator). Save syncs canvas → JSON → BPMN.",
+  wsBpmnV2Started: "V2 started",
   wsBpmnReadOnly: "View only",
-  wsBpmnOpen: "Open workflow",
-  wsBpmnClose: "Close",
+  wsBpmnEditable: "Editable",
+  wsBpmnSave: "Save → JSON",
+  wsBpmnSaving: "Saving…",
+  wsBpmnSaveError: "Save failed",
+  wsBpmnSaved: "Saved",
   wsBpmnDialogTitle: "Visual workflow (BPMN)",
   wsBpmnInlineHint:
-    "Open full-screen view. Readable mode zooms labels for clarity; Overview shows the whole diagram. Minimap in the bottom-right corner.",
+    "Edit with bpmn-js Modeler. Overview fits the diagram in the panel; scroll the page and pan inside the canvas. Save syncs to JSON.",
   wsBpmnZoomIn: "Zoom in",
   wsBpmnZoomOut: "Zoom out",
   wsBpmnOverview: "Overview",
@@ -296,6 +318,11 @@ const en: Dict = {
   wsBpmnThemeLight: "Light — for glare",
   wsBpmnThemeDark: "Black & white",
   wsBpmnThemeGaik: "GAIK v2",
+  wsBpmnPropertiesTitle: "Properties",
+  wsBpmnPropertiesEmpty: "Select a task or data object on the canvas.",
+  wsBpmnPropertiesName: "Name",
+  wsBpmnPropertiesType: "Type",
+  wsBpmnPropertiesId: "Id",
   pocRun: "Run PoC",
   pocRunning: "Running…",
   pocRerun: "Run PoC again",

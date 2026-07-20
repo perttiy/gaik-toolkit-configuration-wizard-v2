@@ -72,6 +72,7 @@ function WorkflowFlowTab({
   sessionTitle,
   wizardStep,
   blueprint,
+  onBlueprintChange,
   t,
   typeLabel,
 }: {
@@ -79,6 +80,7 @@ function WorkflowFlowTab({
   sessionTitle: string;
   wizardStep: number;
   blueprint: Blueprint;
+  onBlueprintChange: (blueprint: Blueprint) => void;
   t: Dict;
   typeLabel: Record<BlueprintStepType, string>;
 }) {
@@ -125,7 +127,7 @@ function WorkflowFlowTab({
   }
 
   return (
-    <div className="flex flex-col gap-4 h-full min-h-0">
+    <div className="flex flex-col gap-4 pb-2">
       {loading && (
         <p className="text-sm text-text-muted">{t.wsBpmnLoading}</p>
       )}
@@ -133,6 +135,41 @@ function WorkflowFlowTab({
         <p className="text-sm text-danger-text" role="alert">
           {t.wsBpmnError}
         </p>
+      )}
+
+      {bpmnXml && !fetchError && (
+        <BpmnDiagramPanel
+          sessionId={sessionId}
+          xml={bpmnXml}
+          ariaLabel={t.wsTabFlow}
+          loadErrorLabel={t.wsBpmnError}
+          editableLabel={t.wsBpmnEditable}
+          dialogTitle={`${t.wsBpmnDialogTitle} — ${sessionTitle}`}
+          hintLabel={t.wsBpmnInlineHint}
+          saveLabel={t.wsBpmnSave}
+          savingLabel={t.wsBpmnSaving}
+          saveErrorLabel={t.wsBpmnSaveError}
+          savedLabel={t.wsBpmnSaved}
+          zoomInLabel={t.wsBpmnZoomIn}
+          zoomOutLabel={t.wsBpmnZoomOut}
+          overviewLabel={t.wsBpmnOverview}
+          readableLabel={t.wsBpmnReadable}
+          toolbarLabel={t.wsBpmnToolbar}
+          themeLabel={t.wsBpmnThemeLabel}
+          themeLightLabel={t.wsBpmnThemeLight}
+          themeDarkLabel={t.wsBpmnThemeDark}
+          themeGaikLabel={t.wsBpmnThemeGaik}
+          v2StartedLabel={t.wsBpmnV2Started}
+          propertiesTitle={t.wsBpmnPropertiesTitle}
+          propertiesEmpty={t.wsBpmnPropertiesEmpty}
+          propertiesName={t.wsBpmnPropertiesName}
+          propertiesType={t.wsBpmnPropertiesType}
+          propertiesId={t.wsBpmnPropertiesId}
+          onSynced={({ blueprint: synced, xml }) => {
+            onBlueprintChange(synced);
+            setBpmnXml(xml);
+          }}
+        />
       )}
 
       <details className="shrink-0 rounded-lg border border-border bg-surface-muted/40 px-3 py-2">
@@ -144,29 +181,7 @@ function WorkflowFlowTab({
         </div>
       </details>
 
-      {bpmnXml && !fetchError && (
-        <BpmnDiagramPanel
-          xml={bpmnXml}
-          ariaLabel={t.wsTabFlow}
-          loadErrorLabel={t.wsBpmnError}
-          readOnlyLabel={t.wsBpmnReadOnly}
-          openLabel={t.wsBpmnOpen}
-          closeLabel={t.wsBpmnClose}
-          dialogTitle={`${t.wsBpmnDialogTitle} - ${sessionTitle}`}
-          hintLabel={t.wsBpmnInlineHint}
-          zoomInLabel={t.wsBpmnZoomIn}
-          zoomOutLabel={t.wsBpmnZoomOut}
-          overviewLabel={t.wsBpmnOverview}
-          readableLabel={t.wsBpmnReadable}
-          toolbarLabel={t.wsBpmnToolbar}
-          themeLabel={t.wsBpmnThemeLabel}
-          themeLightLabel={t.wsBpmnThemeLight}
-          themeDarkLabel={t.wsBpmnThemeDark}
-          themeGaikLabel={t.wsBpmnThemeGaik}
-        />
-      )}
-
-      <p className="text-xs text-text-muted shrink-0">{t.wsBpmnSpikeNote}</p>
+      <p className="shrink-0 text-xs text-text-muted">{t.wsBpmnSpikeNote}</p>
     </div>
   );
 }
@@ -180,7 +195,7 @@ export function WorkspacePanel({
   sessionId,
   sessionTitle,
   wizardStep,
-  blueprint,
+  blueprint: initialBlueprint,
   t,
 }: {
   sessionId: string;
@@ -190,6 +205,7 @@ export function WorkspacePanel({
   t: Dict;
 }) {
   const [tab, setTab] = useState<Tab>("flow");
+  const [blueprint, setBlueprint] = useState(initialBlueprint);
   const [logs, setLogs] = useState<string[]>([]);
   const [pocStatus, setPocStatus] = useState<PocStatus>("idle");
   const baseId = useId();
@@ -275,19 +291,18 @@ export function WorkspacePanel({
             id={panelId}
             aria-labelledby={tabId}
             hidden={tab !== key}
-            className="flex-1 min-h-0"
+            className="flex-1 min-h-0 overflow-y-auto"
           >
             {key === "flow" && (
-              <div className="h-full overflow-auto">
-                <WorkflowFlowTab
+              <WorkflowFlowTab
                   sessionId={sessionId}
                   sessionTitle={sessionTitle}
                   wizardStep={wizardStep}
                   blueprint={blueprint}
+                  onBlueprintChange={setBlueprint}
                   t={t}
                   typeLabel={typeLabel}
                 />
-              </div>
             )}
 
             {key === "json" && (

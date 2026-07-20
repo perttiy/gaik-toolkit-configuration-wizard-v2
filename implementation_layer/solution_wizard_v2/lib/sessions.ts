@@ -7,6 +7,7 @@ import {
   apiGetSession,
   apiListSessions,
   apiPatchSession,
+  apiPatchBlueprint,
   apiPostMessages,
   apiPostVersion,
   type ApiSessionDetail,
@@ -205,4 +206,19 @@ export async function approveGate(id: string): Promise<WizardSession | undefined
   }
   await apiPatchSession(id, { gate_statuses: patch });
   return advanceSession(id);
+}
+
+export async function saveBlueprintAfterBpmnSync(
+  id: string,
+  blueprint: Blueprint,
+): Promise<WizardSession | undefined> {
+  if (!wizardApiEnabled()) {
+    return mock.updateBlueprint(id, blueprint);
+  }
+  try {
+    const detail = await apiPatchBlueprint(id, blueprint, "BPMN canvas sync");
+    return detailToWizardSession(detail);
+  } catch {
+    return undefined;
+  }
 }

@@ -123,9 +123,41 @@ export async function apiPostMessages(
   });
 }
 
-export async function apiPostVersion(id: string, note: string) {
+export async function apiPostVersion(
+  id: string,
+  note: string,
+  content?: ApiSessionDetail["blueprint"],
+) {
   return wizardFetch<ApiSessionDetail>(`/sessions/${id}/versions`, {
     method: "POST",
-    body: JSON.stringify({ note }),
+    body: JSON.stringify({ note, content }),
+  });
+}
+
+export async function apiPatchBlueprint(
+  id: string,
+  content: ApiSessionDetail["blueprint"],
+  note = "Blueprint päivitetty",
+) {
+  return wizardFetch<ApiSessionDetail>(`/sessions/${id}/blueprint`, {
+    method: "PATCH",
+    body: JSON.stringify({ content, note }),
+  });
+}
+
+export async function apiGetSessionBpmn(id: string): Promise<string> {
+  const base = getWizardApiUrl() ?? DEFAULT_API_URL;
+  const res = await fetch(`${base}/sessions/${id}/bpmn`, { cache: "no-store" });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`wizard_api ${res.status} /sessions/${id}/bpmn: ${text}`);
+  }
+  return res.text();
+}
+
+export async function apiSyncSessionBpmn(id: string, xml: string) {
+  return wizardFetch<ApiSessionDetail>(`/sessions/${id}/bpmn/sync`, {
+    method: "POST",
+    body: JSON.stringify({ xml }),
   });
 }

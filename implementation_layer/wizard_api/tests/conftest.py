@@ -1,3 +1,11 @@
+import sys
+from pathlib import Path
+
+# solution_wizard src (BPMN generation) — not a pip package in this repo layout
+_SOLUTION_WIZARD_SRC = Path(__file__).resolve().parents[2] / "solution_wizard" / "src"
+if _SOLUTION_WIZARD_SRC.is_dir():
+    sys.path.insert(0, str(_SOLUTION_WIZARD_SRC))
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine

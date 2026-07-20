@@ -4,11 +4,15 @@ WORKDIR /app
 
 RUN pip install --no-cache-dir --upgrade pip
 
-COPY pyproject.toml ./
-COPY wizard_api ./wizard_api
-COPY alembic ./alembic
-COPY alembic.ini ./
-COPY tests ./tests
+COPY wizard_api/pyproject.toml ./
+COPY wizard_api/wizard_api ./wizard_api
+COPY wizard_api/alembic ./alembic
+COPY wizard_api/alembic.ini ./
+COPY wizard_api/tests ./tests
+
+# solution_wizard provides BPMN generation (V2 adapter + bpmn_generator)
+COPY solution_wizard /solution_wizard
+RUN pip install --no-cache-dir -e /solution_wizard
 
 RUN pip install --no-cache-dir -e .
 

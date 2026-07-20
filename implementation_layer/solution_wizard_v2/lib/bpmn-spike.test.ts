@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
   BPMN_SPIKE_SESSION_IDS,
+  BPMN_V2_STARTED,
   BPMN_VISUAL_STEP,
   hasBpmnSpike,
   shouldShowBpmnSpike,
 } from "@/lib/bpmn-spike";
 
 describe("bpmn-spike", () => {
+  it("marks V2 BPMN as started", () => {
+    expect(BPMN_V2_STARTED).toBe(true);
+  });
+
   it("enables mock seed session ids", () => {
     expect(hasBpmnSpike("ses_chatbot")).toBe(true);
     expect(BPMN_SPIKE_SESSION_IDS.has("ses_laskut")).toBe(true);

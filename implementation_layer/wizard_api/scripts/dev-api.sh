@@ -27,6 +27,7 @@ else
   source .venv/bin/activate
   pip install -e ".[dev]"
 fi
+pip install -e "../solution_wizard"
 
 export WIZARD_DATABASE_URL="${WIZARD_DATABASE_URL:-postgresql+psycopg://wizard:wizard@localhost:5432/wizard}"
 export WIZARD_SESSION_OUTPUT_ROOT="${WIZARD_SESSION_OUTPUT_ROOT:-/tmp/wizard-sessions}"
