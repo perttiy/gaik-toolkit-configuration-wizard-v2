@@ -54,7 +54,11 @@ def session_detail(
     messages = metadata.get("messages")
     if not isinstance(messages, list):
         messages = []
-    blueprint = active.content if active else blueprint_service.default_blueprint_content(_session_title(metadata))
+    blueprint = (
+        active.content
+        if active
+        else blueprint_service.default_blueprint_content(_session_title(metadata))
+    )
     return SessionDetailResponse(
         id=str(session.id),
         user_id=session.user_id,

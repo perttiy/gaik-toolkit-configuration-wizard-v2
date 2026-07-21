@@ -21,7 +21,12 @@ def default_blueprint_content(title: str) -> dict:
                 "component": "LLM",
                 "description": "Mallin vastaus",
             },
-            {"id": "output", "name": "Vastaus", "type": "io", "description": "Palautus käyttäjälle"},
+            {
+                "id": "output",
+                "name": "Vastaus",
+                "type": "io",
+                "description": "Palautus käyttäjälle",
+            },
         ],
     }
 
@@ -53,7 +58,11 @@ def add_version(
 ) -> BlueprintVersion:
     latest = get_latest_version(db, session.id)
     next_version = 1 if latest is None else latest.version + 1
-    body = content if content is not None else (latest.content if latest else default_blueprint_content(""))
+    body = (
+        content
+        if content is not None
+        else (latest.content if latest else default_blueprint_content(""))
+    )
     version = BlueprintVersion(
         session_id=session.id,
         version=next_version,

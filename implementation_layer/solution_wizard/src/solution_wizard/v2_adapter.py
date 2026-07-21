@@ -158,14 +158,18 @@ def v2_to_v1_dict(v2: dict[str, Any], *, session_id: str = "session") -> dict[st
                     "kind": "human_role",
                     "default_lane_for": ["user_task"],
                 },
-                *([
-                    {
-                        "id": "reviewer",
-                        "name": "Reviewer",
-                        "kind": "human_role",
-                        "default_lane_for": ["human_review"],
-                    }
-                ] if has_human_review else []),
+                *(
+                    [
+                        {
+                            "id": "reviewer",
+                            "name": "Reviewer",
+                            "kind": "human_role",
+                            "default_lane_for": ["human_review"],
+                        }
+                    ]
+                    if has_human_review
+                    else []
+                ),
                 {
                     "id": "genai",
                     "name": "GenAI",

@@ -369,9 +369,7 @@ def test_official_naming_conventions():
     assert any(n and n.startswith("Started ") for n in starts)
     assert any(n and "completed" in (n or "").lower() for n in ends)
     # Human-readable data objects (not raw snake_case ids)
-    data_names = [
-        e.get("name") for e in proc if _local(e) == "dataObjectReference"
-    ]
+    data_names = [e.get("name") for e in proc if _local(e) == "dataObjectReference"]
     assert "Voice Note Audio" in data_names
     assert "Raw Transcript" in data_names
     # Component code prefix on automated tasks

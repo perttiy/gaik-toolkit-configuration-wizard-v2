@@ -12,7 +12,9 @@ class BlueprintVersion(Base):
     """Versioned blueprint JSON per session (S1-2)."""
 
     __tablename__ = "blueprint_versions"
-    __table_args__ = (UniqueConstraint("session_id", "version", name="uq_blueprint_session_version"),)
+    __table_args__ = (
+        UniqueConstraint("session_id", "version", name="uq_blueprint_session_version"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     session_id: Mapped[uuid.UUID] = mapped_column(
