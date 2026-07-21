@@ -61,7 +61,7 @@ test.describe("Customer service chatbot (mock)", () => {
 
     // Blueprint JSON tab.
     await page.getByRole("tab", { name: "Blueprint (JSON)" }).click();
-    await expect(workspacePanel.locator("pre")).toContainText('"pgvector"');
+    await expect(workspacePanel.locator("textarea")).toHaveValue(/"pgvector"/);
 
     // PoC mock run.
     await page.getByRole("tab", { name: "PoC" }).click();
