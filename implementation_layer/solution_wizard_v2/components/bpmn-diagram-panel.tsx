@@ -42,6 +42,7 @@ export function BpmnDiagramPanel({
   propertiesType,
   propertiesId,
   onSynced,
+  onLocalStepNameChange,
 }: {
   sessionId: string;
   xml: string;
@@ -70,6 +71,11 @@ export function BpmnDiagramPanel({
   propertiesType: string;
   propertiesId: string;
   onSynced: (result: { blueprint: Blueprint; xml: string }) => void;
+  /**
+   * Optimistic UI update while typing.
+   * We still persist BPMN edits via "Tallenna → JSON".
+   */
+  onLocalStepNameChange?: (stepId: string, nextName: string) => void;
 }) {
   const modelerRef = useRef<BpmnModelerHandle>(null);
   const titleId = useId();
@@ -113,9 +119,21 @@ export function BpmnDiagramPanel({
     }
   }
 
+  function bpmnIdToStepId(bpmnId: string | undefined): string | null {
+    if (!bpmnId) return null;
+    if (bpmnId.startsWith("Activity_")) return bpmnId.slice("Activity_".length);
+    if (bpmnId.startsWith("Gateway_")) return bpmnId.slice("Gateway_".length);
+    return bpmnId;
+  }
+
   function applyNameChange(next: string) {
     setEditName(next);
     modelerRef.current?.updateSelectedName(next);
+    // Keep JSON tab in sync while typing (without waiting for save+sync).
+    const stepId = bpmnIdToStepId(selection?.id);
+    if (stepId && onLocalStepNameChange) {
+      onLocalStepNameChange(stepId, next);
+    }
   }
 
   return (

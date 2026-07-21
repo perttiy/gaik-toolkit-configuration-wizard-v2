@@ -165,6 +165,14 @@ function WorkflowFlowTab({
           propertiesName={t.wsBpmnPropertiesName}
           propertiesType={t.wsBpmnPropertiesType}
           propertiesId={t.wsBpmnPropertiesId}
+          onLocalStepNameChange={(stepId, nextName) => {
+            onBlueprintChange({
+              ...blueprint,
+              steps: blueprint.steps.map((s) =>
+                s.id === stepId ? { ...s, name: nextName } : s,
+              ),
+            });
+          }}
           onSynced={({ blueprint: synced, xml }) => {
             onBlueprintChange(synced);
             setBpmnXml(xml);
@@ -293,7 +301,7 @@ export function WorkspacePanel({
             hidden={tab !== key}
             className="flex-1 min-h-0 overflow-y-auto"
           >
-            {key === "flow" && (
+            {key === "flow" && tab === "flow" && (
               <WorkflowFlowTab
                   sessionId={sessionId}
                   sessionTitle={sessionTitle}
