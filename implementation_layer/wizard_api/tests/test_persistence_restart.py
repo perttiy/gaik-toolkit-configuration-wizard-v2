@@ -6,10 +6,9 @@ from contextlib import contextmanager
 
 import pytest
 from fastapi.testclient import TestClient
+from helpers import requires_postgres
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-
-from helpers import requires_postgres
 from wizard_api.config import get_database_url
 from wizard_api.db import get_db
 from wizard_api.main import app

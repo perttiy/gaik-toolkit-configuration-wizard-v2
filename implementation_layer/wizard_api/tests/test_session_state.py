@@ -1,6 +1,5 @@
 import pytest
 from pydantic import ValidationError
-
 from wizard_api.schemas.session import SessionCreate, SessionUpdate
 from wizard_api.session_state import (
     merge_gate_statuses,

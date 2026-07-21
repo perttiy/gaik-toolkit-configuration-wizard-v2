@@ -1,7 +1,6 @@
 import pytest
-from pydantic import ValidationError
-
 from helpers import requires_postgres
+from pydantic import ValidationError
 from wizard_api.schemas.session import SessionCreate
 
 

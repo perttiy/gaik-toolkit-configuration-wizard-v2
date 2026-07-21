@@ -8,10 +8,9 @@ if _SOLUTION_WIZARD_SRC.is_dir():
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-
 from helpers import postgres_available
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 from wizard_api.config import get_database_url
 from wizard_api.db import get_db
 from wizard_api.main import app
