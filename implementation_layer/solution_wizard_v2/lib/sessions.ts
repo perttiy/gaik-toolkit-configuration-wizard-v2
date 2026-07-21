@@ -212,11 +212,19 @@ export async function saveBlueprintAfterBpmnSync(
   id: string,
   blueprint: Blueprint,
 ): Promise<WizardSession | undefined> {
+  return patchSessionBlueprint(id, blueprint, "BPMN canvas sync");
+}
+
+export async function patchSessionBlueprint(
+  id: string,
+  blueprint: Blueprint,
+  note = "Blueprint päivitetty",
+): Promise<WizardSession | undefined> {
   if (!wizardApiEnabled()) {
-    return mock.updateBlueprint(id, blueprint);
+    return mock.updateBlueprint(id, blueprint, note);
   }
   try {
-    const detail = await apiPatchBlueprint(id, blueprint, "BPMN canvas sync");
+    const detail = await apiPatchBlueprint(id, blueprint, note);
     return detailToWizardSession(detail);
   } catch {
     return undefined;

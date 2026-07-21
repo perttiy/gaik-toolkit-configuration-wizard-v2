@@ -189,7 +189,6 @@ export const BpmnModeler = forwardRef<
       const modeler = new BpmnModelerCtor({
         container,
         additionalModules: [minimapModule],
-        keyboard: { bindTo: document },
       });
       modelerRef.current = modeler;
 

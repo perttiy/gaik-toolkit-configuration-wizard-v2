@@ -87,6 +87,12 @@ export type Dict = {
   wsBpmnPropertiesName: string;
   wsBpmnPropertiesType: string;
   wsBpmnPropertiesId: string;
+  wsJsonSave: string;
+  wsJsonSaving: string;
+  wsJsonSaveError: string;
+  wsJsonSaved: string;
+  wsJsonInvalid: string;
+  wsJsonHint: string;
   pocRun: string;
   pocRunning: string;
   pocRerun: string;
@@ -195,6 +201,13 @@ const fi: Dict = {
   wsBpmnPropertiesName: "Nimi",
   wsBpmnPropertiesType: "Tyyppi",
   wsBpmnPropertiesId: "Id",
+  wsJsonSave: "Tallenna blueprint",
+  wsJsonSaving: "Tallennetaan…",
+  wsJsonSaveError: "Tallennus epäonnistui",
+  wsJsonSaved: "Tallennettu",
+  wsJsonInvalid: "Virheellinen blueprint-JSON",
+  wsJsonHint:
+    "Muokkaa blueprint-JSONia suoraan. Tallenna päivittää sessionin ja generoi BPMN-kaavion uudelleen Työnkulku-välilehdellä.",
   pocRun: "Aja PoC",
   pocRunning: "Ajetaan…",
   pocRerun: "Aja PoC uudelleen",
@@ -323,6 +336,13 @@ const en: Dict = {
   wsBpmnPropertiesName: "Name",
   wsBpmnPropertiesType: "Type",
   wsBpmnPropertiesId: "Id",
+  wsJsonSave: "Save blueprint",
+  wsJsonSaving: "Saving…",
+  wsJsonSaveError: "Save failed",
+  wsJsonSaved: "Saved",
+  wsJsonInvalid: "Invalid blueprint JSON",
+  wsJsonHint:
+    "Edit the blueprint JSON directly. Save updates the session and regenerates the BPMN diagram on the Workflow tab.",
   pocRun: "Run PoC",
   pocRunning: "Running…",
   pocRerun: "Run PoC again",

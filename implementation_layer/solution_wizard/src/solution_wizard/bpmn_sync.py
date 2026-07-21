@@ -154,6 +154,29 @@ def _sync_data_object_names(root: ET.Element, v2_blueprint: dict[str, Any]) -> d
     return mapping
 
 
+def _slugify(name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", (name or "").lower()).strip("_")
+    return slug or "artifact"
+
+
+def _artifact_step_map(v2_blueprint: dict[str, Any]) -> dict[str, str]:
+    """Rebuild the V2 adapter's artifact ids so data-object renames can map back to steps."""
+    mapping: dict[str, str] = {}
+    used: set[str] = set()
+    for i, step in enumerate(list(v2_blueprint.get("steps") or [])):
+        step_id = str(step.get("id") or f"step_{i + 1}")
+        base = _slugify(str(step.get("name") or step_id))
+        art_id = base
+        if art_id in used:
+            n = 2
+            while f"{base}_{n}" in used:
+                n += 1
+            art_id = f"{base}_{n}"
+        used.add(art_id)
+        mapping[art_id] = step_id
+    return mapping
+
+
 def sync_v2_blueprint_from_bpmn_xml(
     v2_blueprint: dict[str, Any],
     bpmn_xml: str,
@@ -232,6 +255,40 @@ def sync_v2_blueprint_from_bpmn_xml(
 
     data_labels = _sync_data_object_names(root, v2_blueprint)
     if data_labels:
+        artifact_to_step = _artifact_step_map(v2_blueprint)
+        old_step_names = {
+            str(step.get("id")): str(step.get("name") or "")
+            for step in list(v2_blueprint.get("steps") or [])
+            if step.get("id")
+        }
+        # If the user renamed the data object that the generator synthesized from a
+        # V2 step, mirror that label back to the producing step name as well.
+        # But keep explicit task renames authoritative: data objects only update
+        # steps that still match the original step name.
+        step_label_updates: dict[str, str] = {}
+        for artifact_id, label in data_labels.items():
+            if artifact_id not in artifact_to_step or not label.strip():
+                continue
+            step_id = artifact_to_step[artifact_id]
+            current = next(
+                (
+                    str(step.get("name") or "")
+                    for step in updated["steps"]
+                    if str(step.get("id")) == step_id
+                ),
+                "",
+            )
+            original = old_step_names.get(step_id, "")
+            if current == original:
+                step_label_updates[step_id] = label
+        if step_label_updates:
+            updated["steps"] = [
+                {
+                    **step,
+                    "name": step_label_updates.get(str(step.get("id")), step.get("name", "")),
+                }
+                for step in updated["steps"]
+            ]
         updated["data_objects"] = {
             **dict(v2_blueprint.get("data_objects") or {}),
             **data_labels,

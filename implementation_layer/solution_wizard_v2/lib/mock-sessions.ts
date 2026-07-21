@@ -65,6 +65,8 @@ export type Blueprint = {
   description: string;
   goal: string;
   steps: BlueprintStep[];
+  /** Optional artifact label overrides synced from BPMN data objects. */
+  data_objects?: Record<string, string>;
 };
 
 export type ChatRole = "user" | "assistant";

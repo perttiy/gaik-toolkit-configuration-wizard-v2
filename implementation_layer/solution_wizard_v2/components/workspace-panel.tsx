@@ -5,6 +5,7 @@ import { useEffect, useId, useState } from "react";
 import type { Blueprint, BlueprintStepType } from "@/lib/mock-sessions";
 import type { Dict } from "@/lib/i18n";
 import { shouldShowBpmnSpike } from "@/lib/bpmn-spike";
+import { BlueprintJsonEditor } from "@/components/blueprint-json-editor";
 
 const BpmnDiagramPanel = dynamic(
   () =>
@@ -72,6 +73,7 @@ function WorkflowFlowTab({
   sessionTitle,
   wizardStep,
   blueprint,
+  bpmnRefreshKey,
   onBlueprintChange,
   t,
   typeLabel,
@@ -80,6 +82,7 @@ function WorkflowFlowTab({
   sessionTitle: string;
   wizardStep: number;
   blueprint: Blueprint;
+  bpmnRefreshKey: number;
   onBlueprintChange: (blueprint: Blueprint) => void;
   t: Dict;
   typeLabel: Record<BlueprintStepType, string>;
@@ -118,7 +121,7 @@ function WorkflowFlowTab({
     return () => {
       cancelled = true;
     };
-  }, [sessionId, showBpmn]);
+  }, [sessionId, showBpmn, bpmnRefreshKey]);
 
   if (!showBpmn) {
     return (
@@ -214,6 +217,7 @@ export function WorkspacePanel({
 }) {
   const [tab, setTab] = useState<Tab>("flow");
   const [blueprint, setBlueprint] = useState(initialBlueprint);
+  const [bpmnRefreshKey, setBpmnRefreshKey] = useState(0);
   const [logs, setLogs] = useState<string[]>([]);
   const [pocStatus, setPocStatus] = useState<PocStatus>("idle");
   const baseId = useId();
@@ -307,6 +311,7 @@ export function WorkspacePanel({
                   sessionTitle={sessionTitle}
                   wizardStep={wizardStep}
                   blueprint={blueprint}
+                  bpmnRefreshKey={bpmnRefreshKey}
                   onBlueprintChange={setBlueprint}
                   t={t}
                   typeLabel={typeLabel}
@@ -314,9 +319,15 @@ export function WorkspacePanel({
             )}
 
             {key === "json" && (
-              <pre className="h-full overflow-auto rounded-lg bg-surface-muted border border-border p-3.5 font-mono text-xs leading-5 text-text-secondary whitespace-pre-wrap">
-                {JSON.stringify(blueprint, null, 2)}
-              </pre>
+              <BlueprintJsonEditor
+                sessionId={sessionId}
+                blueprint={blueprint}
+                onSaved={(saved) => {
+                  setBlueprint(saved);
+                  setBpmnRefreshKey((k) => k + 1);
+                }}
+                t={t}
+              />
             )}
 
             {key === "poc" && (
