@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { GateStatus } from "@/lib/mock-sessions";
+import type { GateStatus } from "@/lib/sessions";
 
 type Props = {
   locale: "fi" | "en";
