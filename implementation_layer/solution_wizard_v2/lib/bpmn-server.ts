@@ -1,8 +1,25 @@
 import { spawn } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import type { Blueprint } from "@/lib/mock-sessions";
 
 const SCRIPTS_DIR = path.join(process.cwd(), "scripts");
+
+/** Prefer project venv so `npm run dev` works without system pydantic. */
+function resolvePythonBin(): string {
+  if (process.env.WIZARD_BPMN_PYTHON) {
+    return process.env.WIZARD_BPMN_PYTHON;
+  }
+  const venvPython = path.join(
+    process.cwd(),
+    ".venv",
+    process.platform === "win32" ? "Scripts/python.exe" : "bin/python3",
+  );
+  if (fs.existsSync(venvPython)) {
+    return venvPython;
+  }
+  return "python3";
+}
 
 function runPythonScript(
   scriptName: string,
@@ -10,7 +27,8 @@ function runPythonScript(
   stdinPayload: string,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn("python3", [path.join(SCRIPTS_DIR, scriptName), ...args], {
+    const python = resolvePythonBin();
+    const child = spawn(python, [path.join(SCRIPTS_DIR, scriptName), ...args], {
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";
@@ -24,7 +42,13 @@ function runPythonScript(
     child.on("error", reject);
     child.on("close", (code) => {
       if (code === 0) resolve(stdout);
-      else reject(new Error(stderr || `python exited ${code}`));
+      else {
+        const hint =
+          /No module named ['"]pydantic['"]/.test(stderr)
+            ? "\nHint: run `./scripts/setup.sh` in solution_wizard_v2 (installs .venv + pydantic), then restart `npm run dev`."
+            : "";
+        reject(new Error((stderr || `python exited ${code}`) + hint));
+      }
     });
     child.stdin.write(stdinPayload);
     child.stdin.end();

@@ -1,6 +1,8 @@
 ## Quick start
 
-### Option A — Docker (full stack) — **suositus manuaalitestaukseen**
+### Option A — Docker (full stack) — **suositus (persistenssi + BPMN)**
+
+Tämä on demojen ja review’n polku: Postgres-sessiot, BPMN wizard_api:n kautta.
 
 ```bash
 cd implementation_layer/wizard_api
@@ -84,11 +86,14 @@ curl -s http://localhost:8100/sessions/SESSION_ID | jq .
 
 ### 7. Mock-tila vs. API-tila
 
-| Ympäristö | `WIZARD_API_URL` | Sessiot |
-|-----------|------------------|---------|
-| Docker Compose (`dev-stack.sh`) | asetettu | Postgres, UUID-sessiot |
-| `npm run dev` ilman API:a | ei | In-memory mock (`ses_chatbot` jne.) |
-| Paikallinen API + UI | `http://localhost:8100` | Postgres |
+| Ympäristö | `WIZARD_API_URL` | Sessiot | Persistenssi + BPMN-edit |
+|-----------|------------------|---------|--------------------------|
+| Docker Compose (`dev-stack.sh`) — **suositus** | asetettu | Postgres, UUID-sessiot | ✅ oikea polku (demo / review) |
+| Paikallinen API + UI | `http://localhost:8100` | Postgres | ✅ sama kuin Docker |
+| `npm run dev` ilman API:a (**UI-only**) | ei | In-memory mock (`ses_chatbot` jne.) | ❌ ei täytä Dmitryn vaatimuksia |
+
+**Tuotevaatimus** (sessiotallennus + muokattava BPMN ↔ JSON): aina **API-tila**.  
+UI-only on vanha Sprint 1 -pikatie UI-kokeiluun — ei demoon, ei asiakasreviewiin.
 
 **Stack E2E** (Postgres + molemmat käyttäjät + API-restart): `cd implementation_layer/wizard_api && ./scripts/docker-test.sh --step stack-e2e`
 
@@ -100,6 +105,8 @@ curl -s http://localhost:8100/sessions/SESSION_ID | jq .
 | UI ei lataudu | `docker compose logs wizard-ui` |
 | Tyhjä sessiolista API-tilassa | Normaalia ensimmäisellä kerralla — luo uusi sessio |
 | Chat ei vastaa | Varmista että olet kirjautunut; tuotanto-UI Dockerissa (ei `next dev`) |
+| BPMN “Failed to load” / 500 UI-onlyssa | Aja `./scripts/setup.sh` (`.venv` + pydantic) **tai** käytä API-tilaa (`WIZARD_API_URL`) — suositus: API |
+| BPMN OK API-tilassa, 500 UI-onlyssa | Odotettua ilman setupia: UI-only spawn `python3` + `solution_wizard`; API generoi BPMN:n itse |
 
 ---
 
@@ -113,11 +120,33 @@ cd implementation_layer/wizard_api
 
 # 2. Frontend (new terminal)
 cd implementation_layer/solution_wizard_v2
-./scripts/setup.sh          # once
+./scripts/setup.sh          # once (npm + .venv/pydantic for BPMN scripts)
 cp .env.local.example .env.local
 # Edit .env.local: WIZARD_API_URL=http://localhost:8100
 npm run dev                 # http://localhost:3000
 ```
+
+### Option B2 — UI only (`npm run dev`, mock sessions) — ei demoon
+
+**Älä käytä demoon / Dmitry–Umair-reviewiin.** UI-onlylla ei ole Postgres-persistenssiä;
+BPMN-editin “oikea” tallennuspolku on wizard_api.
+
+Ilman `WIZARD_API_URL` Next spawnataan Python
+(`scripts/generate_bpmn_from_v2.py` → `solution_wizard` + **pydantic**).
+Järjestelmän `/usr/bin/python3` usein ilman pydanticia → 500 / “Failed to load BPMN”.
+
+Jos silti tarvitset UI-onlyn paikalliseen UI-kokeiluun:
+
+```bash
+cd implementation_layer/solution_wizard_v2
+./scripts/setup.sh          # npm ci + .venv + pip install -r requirements-bpmn.txt
+cp .env.local.example .env.local
+# Leave WIZARD_API_URL commented out
+npm run dev
+```
+
+Optional: `WIZARD_BPMN_PYTHON=/path/to/python` (pydantic asennettuna).  
+API-tilassa (`WIZARD_API_URL` asetettu) UI **ei** spawnaa Pythonia BPMN:ään — generointi on wizard_api:ssa.
 
 ### Option C — One script (API + UI, no Docker UI image)
 
