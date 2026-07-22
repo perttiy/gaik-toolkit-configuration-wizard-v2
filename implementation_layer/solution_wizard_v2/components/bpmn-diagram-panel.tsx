@@ -141,8 +141,8 @@ export function BpmnDiagramPanel({
       className="flex w-full shrink-0 flex-col gap-3 rounded-xl border border-border bg-surface/60 p-4 sm:p-5"
       aria-labelledby={titleId}
     >
-      <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0 space-y-2">
+      <div className="flex shrink-0 flex-col gap-3">
+        <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <h3
               id={titleId}
@@ -168,9 +168,11 @@ export function BpmnDiagramPanel({
               </span>
             )}
           </div>
-          <p className="text-sm text-text-secondary leading-relaxed">{hintLabel}</p>
+          <p className="max-w-3xl text-sm leading-relaxed text-text-secondary">
+            {hintLabel}
+          </p>
         </div>
-        <div className="flex shrink-0 flex-nowrap items-center gap-2 sm:gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <button
             type="button"
             className="btn-brand shrink-0"

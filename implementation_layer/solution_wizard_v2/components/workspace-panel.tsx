@@ -147,7 +147,7 @@ function WorkflowFlowTab({
           ariaLabel={t.wsTabFlow}
           loadErrorLabel={t.wsBpmnError}
           editableLabel={t.wsBpmnEditable}
-          dialogTitle={`${t.wsBpmnDialogTitle} — ${sessionTitle}`}
+          dialogTitle={sessionTitle}
           hintLabel={t.wsBpmnInlineHint}
           saveLabel={t.wsBpmnSave}
           savingLabel={t.wsBpmnSaving}
