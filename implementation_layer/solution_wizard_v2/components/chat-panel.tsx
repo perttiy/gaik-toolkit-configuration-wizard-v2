@@ -114,6 +114,7 @@ export function ChatPanel({
           const line = frame.startsWith("data: ") ? frame.slice(6) : frame;
           if (!line.trim()) continue;
           const evt = JSON.parse(line);
+          if (evt.error) throw new Error("stream error");
           if (evt.delta) {
             setMessages((prev) =>
               prev.map((m) =>

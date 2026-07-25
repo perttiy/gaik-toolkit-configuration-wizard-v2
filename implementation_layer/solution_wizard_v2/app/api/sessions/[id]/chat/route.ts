@@ -5,11 +5,16 @@
 import { NextRequest } from "next/server";
 import { getI18n } from "@/lib/i18n";
 import { requireOwnedSession } from "@/lib/session-access";
-import { postMessage, recordRequirementAnswer } from "@/lib/sessions";
+import { postMessage } from "@/lib/sessions";
+import { resolveChatReply, toStreamTokens } from "@/lib/chat-driver";
 
 export const dynamic = "force-dynamic";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+function sse(data: unknown): Uint8Array {
+  return new TextEncoder().encode(`data: ${JSON.stringify(data)}\n\n`);
+}
 
 export async function POST(
   req: NextRequest,
@@ -27,45 +32,31 @@ export async function POST(
   if (!owned) {
     return new Response("Session not found", { status: 404 });
   }
-  const session = owned.session;
 
-  // Build the mock reply in the user's language.
+  // The assistant reply (mock now; real agent #29 drops into resolveChatReply).
   const { t } = await getI18n();
-  const checklist = t.gate1Checklist;
-  const answers = session.requirements?.answers ?? [];
-  const gathering = session.step <= 3 && answers.length < checklist.length;
+  const fullReply = await resolveChatReply(id, owned.session, userMessage, t);
+  const tokens = toStreamTokens(fullReply);
 
-  let fullReply: string;
-  if (gathering) {
-    // Record this message as the answer to the current checklist question, then
-    // ask the next one (or wrap up when all are gathered).
-    await recordRequirementAnswer(id, userMessage);
-    const nextCount = answers.length + 1;
-    fullReply =
-      nextCount >= checklist.length
-        ? t.chatGatheringDone
-        : `${t.chatAck} ${checklist[nextCount]}`;
-  } else {
-    const phase = t.phases[session.step - 1];
-    fullReply = `${t.chatMockReplyPre}"${phase}"${t.chatMockReplyPost}`;
-  }
-
-  // Split into tokens (word + trailing space) for streaming.
-  const tokens = fullReply.match(/\S+\s*/g) ?? [fullReply];
-
-  const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
-      for (const token of tokens) {
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify({ delta: token })}\n\n`),
-        );
-        await sleep(45);
+      try {
+        for (const token of tokens) {
+          if (req.signal.aborted) {
+            controller.close();
+            return;
+          }
+          controller.enqueue(sse({ delta: token }));
+          await sleep(45);
+        }
+        // Persist the conversation so a reload shows the complete message.
+        await postMessage(id, userMessage, fullReply);
+        controller.enqueue(sse({ done: true }));
+        controller.close();
+      } catch {
+        controller.enqueue(sse({ error: true }));
+        controller.close();
       }
-      // Persist the conversation to the mock store (read by the server render).
-      await postMessage(id, userMessage, fullReply);
-      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`));
-      controller.close();
     },
   });
 
