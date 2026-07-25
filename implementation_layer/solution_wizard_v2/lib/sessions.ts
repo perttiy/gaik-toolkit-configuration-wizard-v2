@@ -244,6 +244,17 @@ export async function requestGateChanges(
   return getSession(id);
 }
 
+export async function recordRequirementAnswer(
+  id: string,
+  answer: string,
+): Promise<WizardSession | undefined> {
+  // Chat-driven requirements gathering is mock; the real agent is #29/#31.
+  if (wizardApiEnabled()) {
+    return getSession(id);
+  }
+  return mock.recordRequirementAnswer(id, answer);
+}
+
 export async function saveBlueprintAfterBpmnSync(
   id: string,
   blueprint: Blueprint,

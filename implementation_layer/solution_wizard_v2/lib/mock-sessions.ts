@@ -92,7 +92,13 @@ export type WizardSession = {
   activeVersion: number;
   messages: ChatMessage[]; // chat-historia (mock)
   blueprint: Blueprint; // active version content (mock)
+  // Requirements gathered in the chat (steps 1–3), one answer per Section-9
+  // checklist point in order. The live agent (#29/#31) replaces this; mock now.
+  requirements?: { answers: string[] };
 };
+
+// Number of Section-9 requirement checklist points (mirrors i18n gate1Checklist).
+export const REQUIREMENT_COUNT = 13;
 
 // Derive gate statuses from the current step: passed = approved, current =
 // pending, future = locked.
@@ -470,6 +476,26 @@ export function requestGateChanges(
     createdAt: now(),
   });
   s.updatedAt = now();
+  return s;
+}
+
+// Record one gathered requirement answer (steps 1–3, in checklist order). When
+// all REQUIREMENT_COUNT answers are in, advance to Gate 1 (step 4).
+export function recordRequirementAnswer(
+  id: string,
+  answer: string,
+): WizardSession | undefined {
+  const s = getSession(id);
+  if (!s) return s;
+  const answers = s.requirements?.answers ?? [];
+  if (answers.length >= REQUIREMENT_COUNT) return s;
+  s.requirements = { answers: [...answers, answer.trim()] };
+  s.updatedAt = now();
+  if (s.requirements.answers.length >= REQUIREMENT_COUNT && s.step < 4) {
+    s.step = 4;
+    s.gateStatus = buildGateStatus(4);
+    s.status = "active";
+  }
   return s;
 }
 

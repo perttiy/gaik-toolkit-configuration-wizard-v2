@@ -5,7 +5,7 @@
 import { NextRequest } from "next/server";
 import { getI18n } from "@/lib/i18n";
 import { requireOwnedSession } from "@/lib/session-access";
-import { postMessage } from "@/lib/sessions";
+import { postMessage, recordRequirementAnswer } from "@/lib/sessions";
 
 export const dynamic = "force-dynamic";
 
@@ -29,10 +29,26 @@ export async function POST(
   }
   const session = owned.session;
 
-  // Build the mock reply in the user's language, referencing the current phase.
+  // Build the mock reply in the user's language.
   const { t } = await getI18n();
-  const phase = t.phases[session.step - 1];
-  const fullReply = `${t.chatMockReplyPre}"${phase}"${t.chatMockReplyPost}`;
+  const checklist = t.gate1Checklist;
+  const answers = session.requirements?.answers ?? [];
+  const gathering = session.step <= 3 && answers.length < checklist.length;
+
+  let fullReply: string;
+  if (gathering) {
+    // Record this message as the answer to the current checklist question, then
+    // ask the next one (or wrap up when all are gathered).
+    await recordRequirementAnswer(id, userMessage);
+    const nextCount = answers.length + 1;
+    fullReply =
+      nextCount >= checklist.length
+        ? t.chatGatheringDone
+        : `${t.chatAck} ${checklist[nextCount]}`;
+  } else {
+    const phase = t.phases[session.step - 1];
+    fullReply = `${t.chatMockReplyPre}"${phase}"${t.chatMockReplyPost}`;
+  }
 
   // Split into tokens (word + trailing space) for streaming.
   const tokens = fullReply.match(/\S+\s*/g) ?? [fullReply];
