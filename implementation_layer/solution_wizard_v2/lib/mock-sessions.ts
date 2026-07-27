@@ -67,6 +67,8 @@ export type Blueprint = {
   steps: BlueprintStep[];
   /** Optional artifact label overrides synced from BPMN data objects. */
   data_objects?: Record<string, string>;
+  /** Gateway snapshots synced from BPMN canvas (#48). */
+  gateways?: { id: string; name: string; type: "exclusive" | "parallel" }[];
 };
 
 export type ChatRole = "user" | "assistant";

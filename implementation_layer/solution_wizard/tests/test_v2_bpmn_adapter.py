@@ -199,3 +199,20 @@ def test_sync_updates_step_name_when_data_object_is_renamed():
     by_id = {s["id"]: s for s in synced["steps"]}
     assert by_id["input"]["name"] == "Syöte1"
     assert synced["data_objects"]["sy_te"] == "Syöte1"
+
+
+def test_sync_snapshots_gateways():
+    v2 = {
+        "name": "Demo",
+        "description": "",
+        "goal": "",
+        "steps": [
+            {"id": "up", "name": "Upload", "type": "io"},
+            {"id": "rev", "name": "Review", "type": "human_review"},
+        ],
+    }
+    xml = generate_bpmn(Blueprint.model_validate(v2_to_v1_dict(v2, session_id="s")))
+    assert "exclusiveGateway" in xml
+    synced = sync_v2_blueprint_from_bpmn_xml(v2, xml)
+    assert synced.get("gateways")
+    assert any(g.get("name") == "Approved?" for g in synced["gateways"])

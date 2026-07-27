@@ -10,10 +10,16 @@ class BlueprintVersionSummary(BaseModel):
 
 
 class BlueprintContent(BaseModel):
+    """V2 session blueprint. Extra BPMN sync fields are persisted in JSONB."""
+
     name: str = ""
     description: str = ""
     goal: str = ""
     steps: list[dict] = Field(default_factory=list)
+    # Populated by BPMN canvas sync (#34 / #48) — data-object label overrides.
+    data_objects: dict[str, str] = Field(default_factory=dict)
+    # Exclusive/parallel gateway snapshots from canvas (#48).
+    gateways: list[dict] = Field(default_factory=list)
 
 
 class SessionDetailResponse(BaseModel):

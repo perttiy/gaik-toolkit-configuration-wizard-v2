@@ -26,6 +26,8 @@ export function BpmnDiagramPanel({
   savingLabel,
   saveErrorLabel,
   savedLabel,
+  lintBlockedLabel,
+  lintWarningsLabel,
   zoomInLabel,
   zoomOutLabel,
   overviewLabel,
@@ -55,6 +57,8 @@ export function BpmnDiagramPanel({
   savingLabel: string;
   saveErrorLabel: string;
   savedLabel: string;
+  lintBlockedLabel: string;
+  lintWarningsLabel: string;
   zoomInLabel: string;
   zoomOutLabel: string;
   overviewLabel: string;
@@ -84,6 +88,9 @@ export function BpmnDiagramPanel({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [lintBlocked, setLintBlocked] = useState(false);
+  const [lintMessages, setLintMessages] = useState<string[]>([]);
+  const [lintWarnings, setLintWarnings] = useState<string[]>([]);
   const [selection, setSelection] = useState<BpmnSelectionInfo>(null);
   const [editName, setEditName] = useState("");
 
@@ -99,6 +106,9 @@ export function BpmnDiagramPanel({
     setSaving(true);
     setSaveError(false);
     setSavedFlash(false);
+    setLintBlocked(false);
+    setLintMessages([]);
+    setLintWarnings([]);
     try {
       const editedXml = await modelerRef.current?.saveXml();
       if (!editedXml) throw new Error("no xml");
@@ -107,9 +117,36 @@ export function BpmnDiagramPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ xml: editedXml }),
       });
-      if (!res.ok) throw new Error("sync failed");
-      const data = (await res.json()) as { blueprint: Blueprint; xml: string };
-      onSynced(data);
+      const data = (await res.json().catch(() => null)) as {
+        blueprint?: Blueprint;
+        xml?: string;
+        lint?: {
+          errors?: { rule: string; id: string; message: string }[];
+          warnings?: { rule: string; id: string; message: string }[];
+        };
+        error?: string;
+      } | null;
+
+      if (res.status === 422 && data?.error === "bpmn_lint_failed") {
+        setLintBlocked(true);
+        setLintMessages(
+          (data.lint?.errors ?? []).map(
+            (e) => `${e.rule}${e.id ? ` (${e.id})` : ""}: ${e.message}`,
+          ),
+        );
+        setLintWarnings(
+          (data.lint?.warnings ?? []).map(
+            (w) => `${w.rule}${w.id ? ` (${w.id})` : ""}: ${w.message}`,
+          ),
+        );
+        return;
+      }
+      if (!res.ok || !data?.blueprint || !data.xml) throw new Error("sync failed");
+      const warns = (data.lint?.warnings ?? []).map(
+        (w) => `${w.rule}${w.id ? ` (${w.id})` : ""}: ${w.message}`,
+      );
+      setLintWarnings(warns);
+      onSynced({ blueprint: data.blueprint, xml: data.xml });
       setSavedFlash(true);
       window.setTimeout(() => setSavedFlash(false), 2500);
     } catch {
@@ -167,10 +204,35 @@ export function BpmnDiagramPanel({
                 {saveErrorLabel}
               </span>
             )}
+            {lintBlocked && (
+              <span className="badge bg-danger-bg border-danger-border text-danger-text text-xs">
+                {lintBlockedLabel}
+              </span>
+            )}
           </div>
           <p className="max-w-3xl text-sm leading-relaxed text-text-secondary">
             {hintLabel}
           </p>
+          {lintMessages.length > 0 && (
+            <ul
+              className="max-w-3xl list-disc space-y-1 rounded-lg border border-danger-border bg-danger-bg/40 px-4 py-2 text-sm text-danger-text"
+              role="alert"
+            >
+              {lintMessages.map((msg) => (
+                <li key={msg}>{msg}</li>
+              ))}
+            </ul>
+          )}
+          {!lintBlocked && lintWarnings.length > 0 && (
+            <div className="max-w-3xl space-y-1 rounded-lg border border-border bg-surface-muted px-4 py-2 text-sm text-text-secondary">
+              <p className="font-medium text-text-strong">{lintWarningsLabel}</p>
+              <ul className="list-disc space-y-1 pl-4">
+                {lintWarnings.map((msg) => (
+                  <li key={msg}>{msg}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <button

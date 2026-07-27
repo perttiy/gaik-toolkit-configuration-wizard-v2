@@ -38,5 +38,18 @@ export function parseBlueprintJson(text: string): Blueprint | null {
     ...(obj.data_objects && typeof obj.data_objects === "object"
       ? { data_objects: obj.data_objects as Record<string, string> }
       : {}),
+    ...(Array.isArray(obj.gateways)
+      ? {
+          gateways: obj.gateways.filter(
+            (g): g is { id: string; name: string; type: "exclusive" | "parallel" } =>
+              !!g &&
+              typeof g === "object" &&
+              typeof (g as { id?: unknown }).id === "string" &&
+              typeof (g as { name?: unknown }).name === "string" &&
+              ((g as { type?: unknown }).type === "exclusive" ||
+                (g as { type?: unknown }).type === "parallel"),
+          ),
+        }
+      : {}),
   };
 }
