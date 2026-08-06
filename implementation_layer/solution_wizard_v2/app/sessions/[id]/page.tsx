@@ -36,17 +36,14 @@ export default async function SessionPage({
   const isGate1 = session.step === 4;
   const isSpec = session.step === 3;
   const isGathering = session.step <= 3;
+  const points = session.requirements?.points ?? [];
   const answers = session.requirements?.answers ?? [];
   const atEnd = session.step >= PHASE_COUNT;
 
-  // During gathering, greet with the first unanswered question so the chat drives
-  // the conversation. Once messages exist, keep the plain greeting.
-  const chatGreeting =
-    isGathering &&
-    session.messages.length === 0 &&
-    answers.length < t.gate1Checklist.length
-      ? `${t.chatGatheringGreetingPre}${t.gate1Checklist[answers.length]}`
-      : t.chatGreeting;
+  // The requirement questions come from the backend (session.requirements) and
+  // reach the user as chat messages — the opening question is a real seeded
+  // message. The greeting stays a stable welcome; it no longer embeds a question.
+  const chatGreeting = t.chatGreeting;
 
   const gateSteps = Array.from({ length: PHASE_COUNT }, (_, i) => i + 1).filter(
     isGateStep,
@@ -134,12 +131,18 @@ export default async function SessionPage({
 
           <div className="relative z-10 flex-1 min-h-0 overflow-y-auto flex flex-col p-6">
             {isGate1 ? (
-              <Gate1Review sessionId={session.id} answers={answers} t={t} />
+              <Gate1Review
+                sessionId={session.id}
+                points={points}
+                answers={answers}
+                t={t}
+              />
             ) : isSpec ? (
               <FieldSchemaEditor />
             ) : isGathering ? (
               <GatheringView
                 phaseTitle={currentPhase}
+                points={points}
                 answers={answers}
                 t={t}
               />
