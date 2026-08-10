@@ -26,6 +26,9 @@ test.use({
 const OUT_DIR = path.join(__dirname, "videos");
 
 test.describe("Wizard V2 new-session BPMN demo video", () => {
+  // Demo recording only — keep CI focused on new-session-dummy-bpmn.spec.ts.
+  test.skip(!!process.env.CI, "demo video — run locally with PLAYWRIGHT_SLOW_MO");
+
   test.beforeEach(async ({ request }) => {
     await resetMockSessions(request);
   });
