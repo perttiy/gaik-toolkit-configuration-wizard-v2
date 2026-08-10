@@ -75,7 +75,11 @@ def _infer_artifact(
     if any(w in blob for w in ("validat", "judge", "qa")):
         return "validation_report", "validation_report"
     if step_type == "human_review":
-        return ("reviewed_output", "structured_json") if is_last else ("draft_report", "structured_json")
+        return (
+            ("reviewed_output", "structured_json")
+            if is_last
+            else ("draft_report", "structured_json")
+        )
     if is_last:
         return "final_output", "structured_json"
     if step_type == "ai":

@@ -148,7 +148,7 @@ def test_data_objects_use_human_readable_labels():
     assert 'DataObjectRef_search_result" name="Search Result"' in xml
     assert 'DataObjectRef_reviewed_output" name="Reviewed Output"' in xml
     # Task titles may still appear on activities; data refs must stay data-named
-    assert 'DataObjectRef_' in xml
+    assert "DataObjectRef_" in xml
     assert not any(
         f'DataObjectRef_{slug}" name="{title}"' in xml
         for slug, title in (
