@@ -43,19 +43,24 @@ def test_extract_stream_text_ignores_thinking_and_non_deltas():
     assert agent_service._extract_stream_text(object()) == ""
 
 
-def test_foundry_env_requires_all_vars(monkeypatch):
+def test_agent_env_never_requires_foundry(monkeypatch):
+    # Ambient path: with no Foundry vars the env is still returned (defaults set)
+    # so the agent runs on the ambient `claude` CLI auth instead of Foundry.
     for k in agent_service.REQUIRED_FOUNDRY_VARS:
         monkeypatch.delenv(k, raising=False)
-    with pytest.raises(agent_service.AgentNotConfiguredError):
-        agent_service._foundry_env()
-
-
-def test_foundry_env_sets_defaults_when_present(monkeypatch):
-    for k in agent_service.REQUIRED_FOUNDRY_VARS:
-        monkeypatch.setenv(k, "x")
-    env = agent_service._foundry_env()
+    assert agent_service._foundry_configured() is False
+    env = agent_service._agent_env()
     assert env["API_TIMEOUT_MS"] == "600000"
     assert env["DISABLE_TELEMETRY"] == "1"
+
+
+def test_foundry_configured_and_env_passthrough_when_present(monkeypatch):
+    for k in agent_service.REQUIRED_FOUNDRY_VARS:
+        monkeypatch.setenv(k, "x")
+    assert agent_service._foundry_configured() is True
+    env = agent_service._agent_env()
+    for k in agent_service.REQUIRED_FOUNDRY_VARS:
+        assert env[k] == "x"
 
 
 def test_resolve_wizard_dir_finds_solution_wizard():

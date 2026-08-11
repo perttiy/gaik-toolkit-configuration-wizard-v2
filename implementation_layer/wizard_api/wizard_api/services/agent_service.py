@@ -67,7 +67,7 @@ AGENT_SESSIONS: dict[str, dict] = {}
 
 
 class AgentNotConfiguredError(RuntimeError):
-    """Raised when the SDK/CLI, wizard assets, or Foundry creds are missing."""
+    """Raised when the Claude Agent SDK/CLI or the wizard assets are missing."""
 
 
 # ---------------------------------------------------------------------------
@@ -85,11 +85,20 @@ def resolve_wizard_dir() -> Path | None:
     return candidate if candidate.is_dir() else None
 
 
-def _foundry_env() -> dict[str, str]:
-    """Subprocess env (inherited + Foundry). Raises if creds are missing."""
-    missing = [k for k in REQUIRED_FOUNDRY_VARS if not (os.getenv(k) or "").strip()]
-    if missing:
-        raise AgentNotConfiguredError("missing Foundry variables: " + ", ".join(missing))
+def _foundry_configured() -> bool:
+    """True when every Azure Foundry variable is set (production routing)."""
+    return all((os.getenv(k) or "").strip() for k in REQUIRED_FOUNDRY_VARS)
+
+
+def _agent_env() -> dict[str, str]:
+    """Subprocess env for the wizard CLI.
+
+    Uses Azure Foundry when it is fully configured (production); otherwise falls
+    back to the *ambient* ``claude`` CLI auth already present in the environment
+    (local dev — no Foundry resource needed). Foundry vars, when set, are already
+    in ``os.environ`` and pass straight through. Never raises: an unauthenticated
+    CLI surfaces a clear error on the first turn instead.
+    """
     env = dict(os.environ)
     env.setdefault("API_TIMEOUT_MS", "600000")
     env.setdefault("DISABLE_TELEMETRY", "1")
@@ -255,7 +264,7 @@ def _build_options(wizard_dir: Path, output_dir: Path):
     return ClaudeAgentOptions(
         cwd=str(wizard_dir),
         add_dirs=[str(output_dir)],
-        env=_foundry_env(),
+        env=_agent_env(),
         model=_model(),
         allowed_tools=["Read", "Grep", "Glob", "Write", "Edit", "Bash"],
         permission_mode="bypassPermissions",
@@ -266,8 +275,9 @@ def _build_options(wizard_dir: Path, output_dir: Path):
 
 async def get_or_create_session(session_id: str, output_dir: str) -> dict:
     """Return the live agent session for ``session_id``, spawning + bootstrapping
-    a ClaudeSDKClient on first use. Raises AgentNotConfiguredError if the SDK, wizard
-    assets, or Foundry creds are missing."""
+    a ClaudeSDKClient on first use. Uses Azure Foundry when configured, else the
+    ambient ``claude`` CLI auth. Raises AgentNotConfiguredError only if the Claude
+    Agent SDK/CLI or the wizard assets are missing."""
     existing = AGENT_SESSIONS.get(session_id)
     if existing is not None:
         return existing
