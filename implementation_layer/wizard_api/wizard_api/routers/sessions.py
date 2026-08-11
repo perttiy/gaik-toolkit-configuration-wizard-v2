@@ -1,4 +1,5 @@
 import asyncio
+import os
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -208,12 +209,26 @@ async def chat(
                 user_message,
                 assistant_text,
             )
+        # Agent-driven advancement: the wizard writes use_case.blueprint.json at
+        # Phase 3 (spec generation), right before Gate 1. Its appearance means
+        # gathering is complete → advance to Gate 1 so the user can't skip it.
+        await asyncio.to_thread(_advance_to_gate1_if_ready, db, session)
 
     return StreamingResponse(
         gen(),
         media_type="text/event-stream",
         headers=agent_service.sse_headers(),
     )
+
+
+def _advance_to_gate1_if_ready(db: Session, session) -> None:
+    """During gathering (step < 4), advance to Gate 1 once the wizard has written
+    the draft blueprint (use_case.blueprint.json) — the Phase 3 → Gate 1 boundary."""
+    if session.step >= 4:
+        return
+    blueprint_path = os.path.join(session.output_dir, "use_case.blueprint.json")
+    if os.path.exists(blueprint_path):
+        session_service.update_session(db, session, SessionUpdate(step=4))
 
 
 @router.post("/{session_id}/versions", response_model=SessionDetailResponse)
