@@ -14,6 +14,8 @@ class BlueprintContent(BaseModel):
     description: str = ""
     goal: str = ""
     steps: list[dict] = Field(default_factory=list)
+    # Persistent repositories → BPMN dataStoreReference (+ send task) via V1 generator.
+    integration_targets: list[str] = Field(default_factory=list)
 
 
 class SessionDetailResponse(BaseModel):

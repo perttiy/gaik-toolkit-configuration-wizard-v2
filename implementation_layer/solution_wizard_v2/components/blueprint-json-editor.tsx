@@ -95,6 +95,7 @@ export function BlueprintJsonEditor({
         }}
         spellCheck={false}
         aria-label={t.wsTabJson}
+        data-testid="blueprint-json-editor"
       />
     </div>
   );
