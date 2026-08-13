@@ -27,6 +27,7 @@ class MessageAppend(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1)
+    locale: str | None = None
 
 
 class VersionCreate(BaseModel):
@@ -186,7 +187,9 @@ async def chat(
         raise HTTPException(status_code=404, detail="session not found")
 
     try:
-        agent = await agent_service.get_or_create_session(str(session_id), session.output_dir)
+        agent = await agent_service.get_or_create_session(
+            str(session_id), session.output_dir, payload.locale
+        )
     except agent_service.AgentNotConfiguredError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 

@@ -135,7 +135,21 @@ def _extract_stream_text(event) -> str:
     return ""
 
 
-def _bootstrap_prompt(output_dir: Path) -> str:
+_LOCALE_LANGUAGE = {"fi": "Finnish", "en": "English"}
+
+
+def _language_line(locale: str | None) -> str:
+    """A bootstrap instruction pinning the reply language to the UI locale."""
+    lang = _LOCALE_LANGUAGE.get((locale or "").strip().lower())
+    if not lang:
+        return ""
+    return (
+        f"\n- Respond to the user in {lang}. Ask every question and write every "
+        f"reply in {lang}, regardless of the language the user writes in."
+    )
+
+
+def _bootstrap_prompt(output_dir: Path, locale: str | None = None) -> str:
     """Internal first message: invoke the skill and pin the output directory."""
     return f"""\
 /solution-wizard
@@ -157,7 +171,7 @@ IMPORTANT INSTRUCTIONS FOR THIS WEB SESSION:
 - The user's FIRST message will be their use-case description (Step 1.2 of
   Phase 1). Acknowledge it briefly (1-2 sentences: pattern classification +
   what you understood), then move straight into Phase 2 requirement collection.
-- Ask one or two questions per message and wait for the reply. Use Markdown.
+- Ask one or two questions per message and wait for the reply. Use Markdown.{_language_line(locale)}
 """
 
 
@@ -273,11 +287,14 @@ def _build_options(wizard_dir: Path, output_dir: Path):
     )
 
 
-async def get_or_create_session(session_id: str, output_dir: str) -> dict:
+async def get_or_create_session(
+    session_id: str, output_dir: str, locale: str | None = None
+) -> dict:
     """Return the live agent session for ``session_id``, spawning + bootstrapping
-    a ClaudeSDKClient on first use. Uses Azure Foundry when configured, else the
-    ambient ``claude`` CLI auth. Raises AgentNotConfiguredError only if the Claude
-    Agent SDK/CLI or the wizard assets are missing."""
+    a ClaudeSDKClient on first use. ``locale`` (fi/en) pins the agent's reply
+    language at bootstrap. Uses Azure Foundry when configured, else the ambient
+    ``claude`` CLI auth. Raises AgentNotConfiguredError only if the Claude Agent
+    SDK/CLI or the wizard assets are missing."""
     existing = AGENT_SESSIONS.get(session_id)
     if existing is not None:
         return existing
@@ -296,7 +313,7 @@ async def get_or_create_session(session_id: str, output_dir: str) -> dict:
     await client.connect()
     # Bootstrap turn: invoke the skill + pin output dir. Drained silently — the
     # prompt tells the agent not to greet, so it produces nothing user-facing.
-    await client.query(_bootstrap_prompt(out))
+    await client.query(_bootstrap_prompt(out, locale))
     await _drain_silent(client)
 
     session = {
