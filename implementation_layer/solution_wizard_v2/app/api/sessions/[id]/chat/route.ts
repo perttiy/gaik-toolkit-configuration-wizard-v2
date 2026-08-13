@@ -43,23 +43,40 @@ export async function POST(
     return new Response("Session not found", { status: 404 });
   }
 
-  // When the wizard_api agent chat endpoint (#29 backend) is live, proxy the
-  // message to it and stream the reply straight through. wizard_api persists the
-  // exchange. Any upstream failure falls through to the mock below, so the UI
-  // never breaks while that endpoint is still being built.
+  // The UI locale (fi/en) pins the agent's reply language and localizes the mock.
+  const { locale, t } = await getI18n();
+
+  // When the wizard_api agent chat endpoint (#29) is enabled, it is the source of
+  // truth — proxy its reply straight through. If the turn can't start (409 = the
+  // wizard is still finishing the previous reply, or another error), surface that
+  // to the user rather than silently substituting a mock reply.
   if (wizardAgentChatEnabled()) {
+    let status = 0;
     try {
-      const upstream = await openAgentChatStream(id, userMessage);
+      const upstream = await openAgentChatStream(id, userMessage, locale);
+      status = upstream.status;
       if (upstream.ok && upstream.body) {
         return new Response(upstream.body, { headers: SSE_HEADERS });
       }
     } catch {
-      // fall through to the mock reply
+      // network error reaching wizard_api — handled below
     }
+    const busy = status === 409;
+    const body = new ReadableStream({
+      start(controller) {
+        if (busy) {
+          controller.enqueue(sse({ delta: t.chatBusy }));
+          controller.enqueue(sse({ done: true }));
+        } else {
+          controller.enqueue(sse({ error: true }));
+        }
+        controller.close();
+      },
+    });
+    return new Response(body, { headers: SSE_HEADERS });
   }
 
   // The assistant reply (mock now; real agent #29 drops into resolveChatReply).
-  const { t } = await getI18n();
   const fullReply = await resolveChatReply(id, owned.session, userMessage, t);
   const tokens = toStreamTokens(fullReply);
 

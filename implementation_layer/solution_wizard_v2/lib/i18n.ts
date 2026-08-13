@@ -119,6 +119,7 @@ export type Dict = {
   gate1Approve: string;
   gatheringCollecting: string;
   gatheringPrompt: string;
+  gatheringAdvanceHint: string;
   ready: string;
   phasesTitle: string;
   saved: string;
@@ -130,6 +131,8 @@ export type Dict = {
   showChat: string;
   phaseProgressNav: string;
   streamFailed: string;
+  chatThinking: string;
+  chatBusy: string;
 
   phases: string[];
   gates: { locked: string; pending: string; approved: string; rejected: string };
@@ -248,6 +251,8 @@ const fi: Dict = {
   gatheringCollecting: "Kerätään vaatimuksia",
   gatheringPrompt:
     "Kuvaa liiketoimintaongelmasi chatissa. Wizard kerää tarvittavat vaatimukset ja muotoilee niistä ratkaisun — arkkitehtuuria ja kaavioita ei vielä tässä vaiheessa.",
+  gatheringAdvanceHint:
+    "Vastaa ensin wizardin kysymyksiin chatissa — se etenee automaattisesti kun vaatimukset ovat kasassa.",
   ready: "Valmis",
   phasesTitle: "Vaiheet",
   saved: "Tallennettu",
@@ -259,6 +264,9 @@ const fi: Dict = {
   showChat: "Näytä keskustelu",
   phaseProgressNav: "Wizard-vaiheet",
   streamFailed: "Vastauksen striimaus epäonnistui.",
+  chatThinking: "Wizard miettii…",
+  chatBusy:
+    "Wizard vastaa vielä edelliseen viestiin — hetki, ja lähetä uudelleen.",
 
   phases: [
     "Session start",
@@ -395,6 +403,8 @@ const en: Dict = {
   gatheringCollecting: "Collecting requirements",
   gatheringPrompt:
     "Describe your business problem in the chat. The wizard collects the requirements it needs and shapes them into a solution — no architecture or diagrams yet at this stage.",
+  gatheringAdvanceHint:
+    "Please answer the wizard's questions in the chat first — it advances automatically once the requirements are complete.",
   ready: "Done",
   phasesTitle: "Steps",
   saved: "Saved",
@@ -406,6 +416,9 @@ const en: Dict = {
   showChat: "Show chat",
   phaseProgressNav: "Wizard steps",
   streamFailed: "Failed to stream the response.",
+  chatThinking: "The wizard is thinking…",
+  chatBusy:
+    "The wizard is still finishing the previous reply — please wait a moment and resend.",
 
   phases: [
     "Session start",
