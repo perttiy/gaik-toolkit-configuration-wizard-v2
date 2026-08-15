@@ -50,6 +50,7 @@ import {
   uiGateRejectPatch,
 } from "@/lib/session-gate-map";
 import { transition } from "@/lib/wizard-state-machine";
+import { REQUIREMENT_POINTS } from "@/lib/requirements-model";
 
 function detailToWizardSession(detail: ApiSessionDetail): WizardSession {
   return {
@@ -78,6 +79,14 @@ function detailToWizardSession(detail: ApiSessionDetail): WizardSession {
         type: s.type as BlueprintStepType,
       })),
     } satisfies Blueprint,
+    // Requirement checklist for the gathering/Gate 1 views. The live agent
+    // gathers via chat; reaching Gate 1 (step ≥ 4) means the wizard wrote the
+    // spec blueprint, i.e. the Section-9 requirements are complete → mark them
+    // answered. During gathering the points show as a reference (0 / N).
+    requirements: {
+      points: REQUIREMENT_POINTS,
+      answers: detail.step >= 4 ? REQUIREMENT_POINTS.map(() => "") : [],
+    },
   };
 }
 
