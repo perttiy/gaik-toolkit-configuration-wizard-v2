@@ -1,8 +1,9 @@
 /**
  * Server-side bpmnlint wrapper (Node only — do not import from client components).
- * Uses bpmnlint:recommended; errors block save, warnings are advisory.
+ * Uses bpmnlint:recommended + GAIK convention warnings (#47 / #64).
  */
 import { createRequire } from "node:module";
+import { lintGaikConventions } from "@/lib/bpmn-gaik-lint";
 
 const require = createRequire(import.meta.url);
 
@@ -73,6 +74,9 @@ export async function lintBpmnXml(xml: string): Promise<BpmnLintResult> {
       });
     }
   }
+
+  const gaik = await lintGaikConventions(xml);
+  issues.push(...gaik.issues);
 
   const errors = issues.filter((i) => i.category === "error");
   const warnings = issues.filter((i) => i.category === "warn" || i.category === "info");

@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useId, useState } from "react";
-import type { Blueprint, BlueprintStepType } from "@/lib/mock-sessions";
+import type { Blueprint, BlueprintStepType, BlueprintVersion } from "@/lib/mock-sessions";
 import type { Dict } from "@/lib/i18n";
 import { shouldShowBpmnSpike } from "@/lib/bpmn-spike";
 import { BlueprintJsonEditor } from "@/components/blueprint-json-editor";
@@ -73,8 +73,10 @@ function WorkflowFlowTab({
   sessionTitle,
   wizardStep,
   blueprint,
+  activeVersion,
   bpmnRefreshKey,
   onBlueprintChange,
+  onVersionMeta,
   t,
   typeLabel,
 }: {
@@ -82,8 +84,13 @@ function WorkflowFlowTab({
   sessionTitle: string;
   wizardStep: number;
   blueprint: Blueprint;
+  activeVersion: number;
   bpmnRefreshKey: number;
   onBlueprintChange: (blueprint: Blueprint) => void;
+  onVersionMeta: (meta: {
+    activeVersion: number;
+    versions: BlueprintVersion[];
+  }) => void;
   t: Dict;
   typeLabel: Record<BlueprintStepType, string>;
 }) {
@@ -144,6 +151,7 @@ function WorkflowFlowTab({
         <BpmnDiagramPanel
           sessionId={sessionId}
           xml={bpmnXml}
+          activeVersion={activeVersion}
           ariaLabel={t.wsTabFlow}
           loadErrorLabel={t.wsBpmnError}
           editableLabel={t.wsBpmnEditable}
@@ -153,6 +161,13 @@ function WorkflowFlowTab({
           savingLabel={t.wsBpmnSaving}
           saveErrorLabel={t.wsBpmnSaveError}
           savedLabel={t.wsBpmnSaved}
+          undoLabel={t.wsJsonUndo}
+          undoingLabel={t.wsJsonUndoing}
+          undoneLabel={t.wsJsonUndone}
+          undoErrorLabel={t.wsJsonUndoError}
+          undoHintLabel={t.wsJsonUndoHint}
+          undoDisabledLabel={t.wsJsonUndoDisabled}
+          activeBlueprintLabel={t.activeBlueprint}
           lintBlockedLabel={t.wsBpmnLintBlocked}
           lintWarningsLabel={t.wsBpmnLintWarnings}
           zoomInLabel={t.wsBpmnZoomIn}
@@ -178,9 +193,10 @@ function WorkflowFlowTab({
               ),
             });
           }}
-          onSynced={({ blueprint: synced, xml }) => {
+          onSynced={({ blueprint: synced, xml, meta }) => {
             onBlueprintChange(synced);
             setBpmnXml(xml);
+            if (meta) onVersionMeta(meta);
           }}
         />
       )}
@@ -209,16 +225,22 @@ export function WorkspacePanel({
   sessionTitle,
   wizardStep,
   blueprint: initialBlueprint,
+  versions: initialVersions,
+  activeVersion: initialActiveVersion,
   t,
 }: {
   sessionId: string;
   sessionTitle: string;
   wizardStep: number;
   blueprint: Blueprint;
+  versions: BlueprintVersion[];
+  activeVersion: number;
   t: Dict;
 }) {
   const [tab, setTab] = useState<Tab>("flow");
   const [blueprint, setBlueprint] = useState(initialBlueprint);
+  const [versions, setVersions] = useState(initialVersions);
+  const [activeVersion, setActiveVersion] = useState(initialActiveVersion);
   const [bpmnRefreshKey, setBpmnRefreshKey] = useState(0);
   const [logs, setLogs] = useState<string[]>([]);
   const [pocStatus, setPocStatus] = useState<PocStatus>("idle");
@@ -313,8 +335,15 @@ export function WorkspacePanel({
                   sessionTitle={sessionTitle}
                   wizardStep={wizardStep}
                   blueprint={blueprint}
+                  activeVersion={activeVersion}
                   bpmnRefreshKey={bpmnRefreshKey}
                   onBlueprintChange={setBlueprint}
+                  onVersionMeta={(meta) => {
+                    setActiveVersion(meta.activeVersion);
+                    if (meta.versions.length > 0) {
+                      setVersions(meta.versions);
+                    }
+                  }}
                   t={t}
                   typeLabel={typeLabel}
                 />
@@ -324,8 +353,14 @@ export function WorkspacePanel({
               <BlueprintJsonEditor
                 sessionId={sessionId}
                 blueprint={blueprint}
-                onSaved={(saved) => {
+                versions={versions}
+                activeVersion={activeVersion}
+                onSaved={(saved, meta) => {
                   setBlueprint(saved);
+                  if (meta) {
+                    setActiveVersion(meta.activeVersion);
+                    setVersions(meta.versions);
+                  }
                   setBpmnRefreshKey((k) => k + 1);
                 }}
                 t={t}

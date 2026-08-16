@@ -162,3 +162,28 @@ export async function apiSyncSessionBpmn(id: string, xml: string) {
     body: JSON.stringify({ xml }),
   });
 }
+
+export async function apiApplyBlueprintOps(
+  id: string,
+  ops: object[],
+  note = "Blueprint change-ops",
+) {
+  return wizardFetch<ApiSessionDetail>(`/sessions/${id}/blueprint/ops`, {
+    method: "POST",
+    body: JSON.stringify({ ops, note }),
+  });
+}
+
+export async function apiRestoreBlueprintVersion(
+  id: string,
+  version: number,
+  note = "",
+) {
+  return wizardFetch<ApiSessionDetail>(
+    `/sessions/${id}/versions/${version}/restore`,
+    {
+      method: "POST",
+      body: JSON.stringify({ note }),
+    },
+  );
+}

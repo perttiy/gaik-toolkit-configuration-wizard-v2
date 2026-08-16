@@ -36,6 +36,15 @@ class BpmnSyncRequest(BaseModel):
     xml: str = Field(min_length=1)
 
 
+class BlueprintOpsRequest(BaseModel):
+    ops: list[dict] = Field(min_length=1)
+    note: str = Field(default="Blueprint change-ops", max_length=512)
+
+
+class VersionRestoreRequest(BaseModel):
+    note: str = Field(default="", max_length=512)
+
+
 @router.patch("/{session_id}/blueprint", response_model=SessionDetailResponse)
 def patch_blueprint(
     session_id: uuid.UUID,
@@ -51,6 +60,65 @@ def patch_blueprint(
         note=payload.note,
         content=payload.content,
     )
+    db.commit()
+    db.refresh(session)
+    return session_service.session_detail(db, session)
+
+
+@router.post("/{session_id}/blueprint/ops", response_model=SessionDetailResponse)
+def apply_blueprint_ops(
+    session_id: uuid.UUID,
+    payload: BlueprintOpsRequest,
+    db: Session = Depends(get_db),
+) -> SessionDetailResponse:
+    """Apply structured change-ops; JSON remains source of truth (#66)."""
+    from wizard_api.services import bpmn_service
+
+    session = session_service.get_session(db, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    detail = session_service.session_detail(db, session)
+    try:
+        updated = bpmn_service.apply_blueprint_ops(
+            detail.blueprint.model_dump(),
+            payload.ops,
+        )
+    except bpmn_service.BpmnGenerationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    blueprint_service.add_version(
+        db,
+        session,
+        note=payload.note,
+        content=updated,
+    )
+    db.commit()
+    db.refresh(session)
+    return session_service.session_detail(db, session)
+
+
+@router.post(
+    "/{session_id}/versions/{version}/restore",
+    response_model=SessionDetailResponse,
+)
+def restore_blueprint_version(
+    session_id: uuid.UUID,
+    version: int,
+    payload: VersionRestoreRequest | None = None,
+    db: Session = Depends(get_db),
+) -> SessionDetailResponse:
+    """Restore an older blueprint version by appending a copy as the new active (#67)."""
+    session = session_service.get_session(db, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    try:
+        blueprint_service.restore_version(
+            db,
+            session,
+            version=version,
+            note=(payload.note if payload and payload.note else None),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     db.commit()
     db.refresh(session)
     return session_service.session_detail(db, session)

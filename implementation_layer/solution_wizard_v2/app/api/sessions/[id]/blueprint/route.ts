@@ -40,5 +40,9 @@ export async function PATCH(
     return new Response("Blueprint save failed", { status: 500 });
   }
 
-  return Response.json({ blueprint: updated.blueprint });
+  return Response.json({
+    blueprint: updated.blueprint,
+    activeVersion: updated.activeVersion,
+    versions: updated.versions,
+  });
 }

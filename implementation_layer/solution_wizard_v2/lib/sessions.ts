@@ -10,6 +10,7 @@ import {
   apiPatchBlueprint,
   apiPostMessages,
   apiPostVersion,
+  apiRestoreBlueprintVersion,
   type ApiSessionDetail,
   type ApiSessionSummary,
   wizardApiEnabled,
@@ -225,6 +226,22 @@ export async function patchSessionBlueprint(
   }
   try {
     const detail = await apiPatchBlueprint(id, blueprint, note);
+    return detailToWizardSession(detail);
+  } catch {
+    return undefined;
+  }
+}
+
+export async function restoreSessionBlueprintVersion(
+  id: string,
+  version: number,
+  note = "",
+): Promise<WizardSession | undefined> {
+  if (!wizardApiEnabled()) {
+    return mock.restoreBlueprintVersion(id, version, note);
+  }
+  try {
+    const detail = await apiRestoreBlueprintVersion(id, version, note);
     return detailToWizardSession(detail);
   } catch {
     return undefined;

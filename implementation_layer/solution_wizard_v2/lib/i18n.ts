@@ -95,6 +95,12 @@ export type Dict = {
   wsJsonSaved: string;
   wsJsonInvalid: string;
   wsJsonHint: string;
+  wsJsonUndo: string;
+  wsJsonUndoing: string;
+  wsJsonUndone: string;
+  wsJsonUndoError: string;
+  wsJsonUndoHint: string;
+  wsJsonUndoDisabled: string;
   pocRun: string;
   pocRunning: string;
   pocRerun: string;
@@ -190,7 +196,7 @@ const fi: Dict = {
   wsBpmnLintWarnings: "BPMN-varoitukset",
   wsBpmnDialogTitle: "Visuaalinen työnkulku (BPMN)",
   wsBpmnInlineHint:
-    "Muokkaa kaaviota bpmn-js Modelerilla. Koko prosessi -näkymä mahtuu alueelle; voit scrollata sivua ja panna kaaviota hiirellä. Tallenna synkkaa JSONiin (bpmnlint tarkistaa ennen tallennusta).",
+    "Muokkaa kaaviota bpmn-js Modelerilla. Koko prosessi -näkymä mahtuu alueelle; voit scrollata sivua ja panna kaaviota hiirellä. Tallenna synkkaa JSONiin (bpmnlint tarkistaa ennen tallennusta). Kumoa palauttaa edellisen blueprint-version.",
   wsBpmnZoomIn: "Lähennä",
   wsBpmnZoomOut: "Loitonna",
   wsBpmnOverview: "Koko prosessi",
@@ -211,7 +217,13 @@ const fi: Dict = {
   wsJsonSaved: "Tallennettu",
   wsJsonInvalid: "Virheellinen blueprint-JSON",
   wsJsonHint:
-    "Muokkaa blueprint-JSONia suoraan. Tallenna päivittää sessionin ja generoi BPMN-kaavion uudelleen Työnkulku-välilehdellä.",
+    "Muokkaa blueprint-JSONia suoraan. Tallenna päivittää sessionin ja generoi BPMN-kaavion uudelleen Työnkulku-välilehdellä. Kumoa palauttaa edellisen version.",
+  wsJsonUndo: "Kumoa",
+  wsJsonUndoing: "Kumotaan…",
+  wsJsonUndone: "Edellinen versio palautettu",
+  wsJsonUndoError: "Kumoaminen epäonnistui",
+  wsJsonUndoHint: "Palauta versio {version}",
+  wsJsonUndoDisabled: "Ei aiempaa versiota",
   pocRun: "Aja PoC",
   pocRunning: "Ajetaan…",
   pocRerun: "Aja PoC uudelleen",
@@ -327,7 +339,7 @@ const en: Dict = {
   wsBpmnLintWarnings: "BPMN warnings",
   wsBpmnDialogTitle: "Visual workflow (BPMN)",
   wsBpmnInlineHint:
-    "Edit with bpmn-js Modeler. Overview fits the diagram in the panel; scroll the page and pan inside the canvas. Save syncs to JSON (bpmnlint runs before save).",
+    "Edit with bpmn-js Modeler. Overview fits the diagram in the panel; scroll the page and pan inside the canvas. Save syncs to JSON (bpmnlint runs before save). Undo restores the previous blueprint version.",
   wsBpmnZoomIn: "Zoom in",
   wsBpmnZoomOut: "Zoom out",
   wsBpmnOverview: "Overview",
@@ -348,7 +360,13 @@ const en: Dict = {
   wsJsonSaved: "Saved",
   wsJsonInvalid: "Invalid blueprint JSON",
   wsJsonHint:
-    "Edit the blueprint JSON directly. Save updates the session and regenerates the BPMN diagram on the Workflow tab.",
+    "Edit the blueprint JSON directly. Save updates the session and regenerates the BPMN diagram on the Workflow tab. Undo restores the previous version.",
+  wsJsonUndo: "Undo",
+  wsJsonUndoing: "Undoing…",
+  wsJsonUndone: "Previous version restored",
+  wsJsonUndoError: "Undo failed",
+  wsJsonUndoHint: "Restore version {version}",
+  wsJsonUndoDisabled: "No previous version",
   pocRun: "Run PoC",
   pocRunning: "Running…",
   pocRerun: "Run PoC again",

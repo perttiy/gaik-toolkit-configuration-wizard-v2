@@ -107,6 +107,34 @@ def get_latest_version(db: Session, session_id: uuid.UUID) -> BlueprintVersion |
     return db.scalars(stmt).first()
 
 
+def get_version(
+    db: Session, session_id: uuid.UUID, version: int
+) -> BlueprintVersion | None:
+    stmt = select(BlueprintVersion).where(
+        BlueprintVersion.session_id == session_id,
+        BlueprintVersion.version == version,
+    )
+    return db.scalars(stmt).first()
+
+
+def restore_version(
+    db: Session,
+    session: WizardSession,
+    *,
+    version: int,
+    note: str | None = None,
+) -> BlueprintVersion:
+    """Create a new version whose content copies an older version (undo/restore #67)."""
+    source = get_version(db, session.id, version)
+    if source is None:
+        raise ValueError(f"version {version} not found")
+    return add_version(
+        db,
+        session,
+        note=note or f"Restored from v{version}",
+        content=dict(source.content or {}),
+    )
+
 def get_active_version(db: Session, session: WizardSession) -> BlueprintVersion | None:
     stmt = select(BlueprintVersion).where(
         BlueprintVersion.session_id == session.id,

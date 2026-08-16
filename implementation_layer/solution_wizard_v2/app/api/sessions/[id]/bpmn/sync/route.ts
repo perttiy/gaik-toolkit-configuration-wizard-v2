@@ -53,11 +53,13 @@ export async function POST(
 
   try {
     const result = await syncSessionBpmn(id, owned.session.blueprint, body.xml);
-    await saveBlueprintAfterBpmnSync(id, result.blueprint);
+    const saved = await saveBlueprintAfterBpmnSync(id, result.blueprint);
     return Response.json({
       blueprint: result.blueprint,
       xml: result.xml,
       lint,
+      activeVersion: saved?.activeVersion,
+      versions: saved?.versions,
     });
   } catch (err) {
     console.error("[bpmn sync]", err);

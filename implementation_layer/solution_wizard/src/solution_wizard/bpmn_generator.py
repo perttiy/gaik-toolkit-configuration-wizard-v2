@@ -145,9 +145,20 @@ _ARTIFACT_TYPE_LABELS: Dict[str, str] = {
 
 def _data_object_label(art_id: str, art: Any = None) -> str:
     """Human-readable data object name (official BPMN samples + modeling guide)."""
+    # Canvas / V2 override (#48)
+    if art is not None:
+        display = getattr(art, "display_name", None)
+        if isinstance(display, str) and display.strip():
+            return display.strip()
+        if isinstance(art, dict):
+            raw = art.get("display_name")
+            if isinstance(raw, str) and raw.strip():
+                return raw.strip()
     type_key = ""
     if art is not None:
         type_key = str(getattr(art, "type", "") or "").lower()
+        if isinstance(art, dict):
+            type_key = str(art.get("type") or "").lower()
     # Exact id matches known type labels (e.g. structured_json → Structured JSON).
     if art_id in _ARTIFACT_TYPE_LABELS:
         return _ARTIFACT_TYPE_LABELS[art_id]
@@ -553,11 +564,23 @@ class _BpmnBuilder:
         # also honour technical_spec.human_review_required when no explicit
         # human_review step exists but a final output is produced -> skip
         # (we only add a gateway when there is a concrete review step).
+        overrides = {
+            str(g.get("id")): g
+            for g in list((self.bp.visualizations or {}).get("gateway_overrides") or [])
+            if isinstance(g, dict) and g.get("id")
+        }
         for s in review_steps:
             hid = self._step_node_id(s)
             xg = f"Gateway_approve_{_safe(s.id)}"
+            gateway_name = "Approved?"
+            ov = overrides.get(xg) or next(
+                (g for g in overrides.values() if str(g.get("id") or "").endswith(_safe(s.id))),
+                None,
+            )
+            if ov and str(ov.get("name") or "").strip():
+                gateway_name = str(ov.get("name")).strip()
             self.nodes[xg] = _Node(
-                xg, "bpmn:exclusiveGateway", "Approved?", self.nodes[hid].lane, "gateway"
+                xg, "bpmn:exclusiveGateway", gateway_name, self.nodes[hid].lane, "gateway"
             )
             self._map(xg, "approval_gateway", f"derived:approval_after:{s.id}")
             self._approval_gateways.append(xg)

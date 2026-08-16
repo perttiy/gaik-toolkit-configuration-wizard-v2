@@ -46,6 +46,8 @@ export type BlueprintVersion = {
   version: number;
   createdAt: string;
   note: string;
+  /** Snapshot of blueprint at this version (mock undo/restore). */
+  content?: Blueprint;
 };
 
 // Blueprint content (mock): name, goal, and workflow steps. Rendered by the
@@ -175,6 +177,9 @@ function seedSession(
       version: i + 1,
       createdAt: created,
       note: i === 0 ? "Initial blueprint" : `Change #${i + 1}`,
+      // Seed only attaches content on the active version; older restores need
+      // a real edit history (createSession / updateBlueprint).
+      content: i === versionCount - 1 ? structuredClone(blueprint) : undefined,
     }),
   );
   return {
@@ -369,6 +374,7 @@ export function getSession(id: string): WizardSession | undefined {
 export function createSession(userId: string, title: string): WizardSession {
   const id = "ses_" + crypto.randomUUID().slice(0, 8);
   const ts = now();
+  const blueprint = defaultBlueprint(title.trim() || "Nimetön sessio");
   const s: WizardSession = {
     id,
     userId,
@@ -379,10 +385,17 @@ export function createSession(userId: string, title: string): WizardSession {
     outputDir: outputDirFor(id),
     createdAt: ts,
     updatedAt: ts,
-    versions: [{ version: 1, createdAt: ts, note: "Alustava blueprint" }],
+    versions: [
+      {
+        version: 1,
+        createdAt: ts,
+        note: "Alustava blueprint",
+        content: structuredClone(blueprint),
+      },
+    ],
     activeVersion: 1,
     messages: [],
-    blueprint: defaultBlueprint(title.trim() || "Nimetön sessio"),
+    blueprint,
   };
   sessions.push(s);
   return s;
@@ -424,7 +437,12 @@ export function advanceSession(id: string): WizardSession | undefined {
   s.gateStatus = { ...s.gateStatus, ...buildGateStatus(s.step) };
   // Each step produces a new blueprint version.
   const v = s.versions.length + 1;
-  s.versions.push({ version: v, createdAt: now(), note: `Vaihe ${s.step}` });
+  s.versions.push({
+    version: v,
+    createdAt: now(),
+    note: `Vaihe ${s.step}`,
+    content: structuredClone(s.blueprint),
+  });
   s.activeVersion = v;
   s.status = s.step >= PHASE_COUNT ? "done" : "active";
   s.updatedAt = now();
@@ -465,8 +483,30 @@ export function updateBlueprint(
   if (!s) return undefined;
   s.blueprint = blueprint;
   const v = s.versions.length + 1;
-  s.versions.push({ version: v, createdAt: now(), note });
+  s.versions.push({
+    version: v,
+    createdAt: now(),
+    note,
+    content: structuredClone(blueprint),
+  });
   s.activeVersion = v;
   s.updatedAt = now();
   return s;
+}
+
+/** Restore an older blueprint version by appending a copy as the new active (#67). */
+export function restoreBlueprintVersion(
+  id: string,
+  version: number,
+  note?: string,
+): WizardSession | undefined {
+  const s = getSession(id);
+  if (!s) return undefined;
+  const source = s.versions.find((v) => v.version === version);
+  if (!source?.content) return undefined;
+  return updateBlueprint(
+    id,
+    structuredClone(source.content),
+    note?.trim() || `Restored from v${version}`,
+  );
 }

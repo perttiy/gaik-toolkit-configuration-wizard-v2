@@ -82,3 +82,89 @@ def test_bpmn_sync_updates_blueprint_from_canvas(client) -> None:
     steps = synced.json()["blueprint"]["steps"]
     names = [s["name"] for s in steps]
     assert "Vector retrieval" in names
+
+
+@requires_postgres
+@requires_solution_wizard
+def test_blueprint_ops_rename_step(client) -> None:
+    create = client.post("/sessions", json={"user_id": "ops-user", "title": "Ops test"})
+    session_id = create.json()["id"]
+    client.patch(
+        f"/sessions/{session_id}/blueprint",
+        json={"content": SAMPLE_BLUEPRINT},
+    )
+    res = client.post(
+        f"/sessions/{session_id}/blueprint/ops",
+        json={
+            "ops": [{"op": "rename_step", "step_id": "rag", "name": "Retrieve Context"}],
+            "note": "rename via ops",
+        },
+    )
+    assert res.status_code == 200
+    steps = {s["id"]: s for s in res.json()["blueprint"]["steps"]}
+    assert steps["rag"]["name"] == "Retrieve Context"
+    assert res.json()["active_version"] >= 3
+
+
+@requires_postgres
+@requires_solution_wizard
+def test_restore_blueprint_version(client) -> None:
+    create = client.post("/sessions", json={"user_id": "restore-user", "title": "Restore"})
+    session_id = create.json()["id"]
+    client.patch(
+        f"/sessions/{session_id}/blueprint",
+        json={"content": SAMPLE_BLUEPRINT, "note": "v2"},
+    )
+    client.post(
+        f"/sessions/{session_id}/blueprint/ops",
+        json={
+            "ops": [{"op": "rename_step", "step_id": "rag", "name": "Changed"}],
+        },
+    )
+    before = client.get(f"/sessions/{session_id}").json()
+    assert before["active_version"] == 3
+    assert len(before["versions"]) == 3
+
+    restored = client.post(f"/sessions/{session_id}/versions/2/restore", json={})
+    assert restored.status_code == 200
+    body = restored.json()
+    # Append-only undo: new version, history kept
+    assert body["active_version"] == 4
+    assert len(body["versions"]) == 4
+    assert "Restored" in (body["versions"][-1].get("note") or "")
+    steps = {s["id"]: s for s in body["blueprint"]["steps"]}
+    assert steps["rag"]["name"] == "RAG search"
+
+
+@requires_postgres
+@requires_solution_wizard
+def test_restore_missing_version_returns_404(client) -> None:
+    create = client.post("/sessions", json={"user_id": "restore-404", "title": "Missing"})
+    session_id = create.json()["id"]
+    res = client.post(f"/sessions/{session_id}/versions/99/restore", json={})
+    assert res.status_code == 404
+
+
+@requires_postgres
+@requires_solution_wizard
+def test_restore_as_one_step_undo(client) -> None:
+    """Undo = restore previous active version (n-1)."""
+    create = client.post("/sessions", json={"user_id": "undo-user", "title": "Undo"})
+    session_id = create.json()["id"]
+    client.patch(
+        f"/sessions/{session_id}/blueprint",
+        json={"content": SAMPLE_BLUEPRINT, "note": "good"},
+    )
+    client.post(
+        f"/sessions/{session_id}/blueprint/ops",
+        json={"ops": [{"op": "rename_step", "step_id": "input", "name": "Oops"}]},
+    )
+    active = client.get(f"/sessions/{session_id}").json()["active_version"]
+    undone = client.post(
+        f"/sessions/{session_id}/versions/{active - 1}/restore",
+        json={"note": "Undo last change"},
+    )
+    assert undone.status_code == 200
+    steps = {s["id"]: s for s in undone.json()["blueprint"]["steps"]}
+    assert steps["input"]["name"] == "User question"
+    assert undone.json()["active_version"] == active + 1
