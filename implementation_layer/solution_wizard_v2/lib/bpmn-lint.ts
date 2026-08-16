@@ -1,10 +1,9 @@
 /**
  * Server-side bpmnlint wrapper (Node only — do not import from client components).
- * Uses bpmnlint:recommended; errors block save, warnings are advisory.
+ * Spawns scripts/lint-bpmn.mjs so bpmnlint's NodeResolver works under Next.js.
  */
-import { createRequire } from "node:module";
-
-const require = createRequire(import.meta.url);
+import { spawnSync } from "node:child_process";
+import path from "node:path";
 
 export type BpmnLintIssue = {
   rule: string;
@@ -20,66 +19,27 @@ export type BpmnLintResult = {
   issues: BpmnLintIssue[];
 };
 
-type RawReport = {
-  id?: string;
-  message?: string;
-  category?: string;
-};
-
-function loadLinter() {
-  const { BpmnModdle } = require("bpmn-moddle") as {
-    BpmnModdle: new () => {
-      fromXML: (xml: string) => Promise<{ rootElement: unknown }>;
-    };
-  };
-  const bpmnlint = require("bpmnlint") as {
-    Linter?: new (opts: unknown) => { lint: (el: unknown) => Promise<Record<string, RawReport[]>> };
-    default?: new (opts: unknown) => { lint: (el: unknown) => Promise<Record<string, RawReport[]>> };
-  };
-  const NodeResolverMod = require("bpmnlint/lib/resolver/node-resolver") as {
-    default?: new () => unknown;
-  };
-  const Linter = bpmnlint.Linter ?? bpmnlint.default;
-  if (!Linter) {
-    throw new Error("bpmnlint Linter export missing");
-  }
-  const NodeResolver = NodeResolverMod.default ?? NodeResolverMod;
-  return {
-    moddle: new BpmnModdle(),
-    linter: new Linter({
-      config: { extends: "bpmnlint:recommended" },
-      resolver: new (NodeResolver as new () => unknown)(),
-    }),
-  };
-}
-
 export async function lintBpmnXml(xml: string): Promise<BpmnLintResult> {
-  const { moddle, linter } = loadLinter();
-  const { rootElement } = await moddle.fromXML(xml);
-  const reports = await linter.lint(rootElement);
-
-  const issues: BpmnLintIssue[] = [];
-  for (const [rule, items] of Object.entries(reports ?? {})) {
-    for (const item of items ?? []) {
-      const category =
-        item.category === "error" || item.category === "warn" || item.category === "info"
-          ? item.category
-          : "error";
-      issues.push({
-        rule,
-        id: item.id ?? "",
-        message: item.message ?? rule,
-        category,
-      });
-    }
+  const script = path.join(process.cwd(), "scripts", "lint-bpmn.mjs");
+  const result = spawnSync(process.execPath, [script], {
+    input: xml,
+    encoding: "utf8",
+    maxBuffer: 20 * 1024 * 1024,
+    cwd: process.cwd(),
+  });
+  if (result.error) {
+    throw result.error;
   }
-
-  const errors = issues.filter((i) => i.category === "error");
-  const warnings = issues.filter((i) => i.category === "warn" || i.category === "info");
+  if (result.status !== 0) {
+    throw new Error(
+      `bpmn lint process exited ${result.status}: ${result.stderr || result.stdout}`,
+    );
+  }
+  const parsed = JSON.parse(result.stdout) as BpmnLintResult;
   return {
-    ok: errors.length === 0,
-    errors,
-    warnings,
-    issues,
+    ok: Boolean(parsed.ok),
+    errors: parsed.errors ?? [],
+    warnings: parsed.warnings ?? [],
+    issues: parsed.issues ?? [],
   };
 }
