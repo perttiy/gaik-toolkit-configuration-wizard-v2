@@ -69,6 +69,8 @@ export type Blueprint = {
   data_objects?: Record<string, string>;
   /** Gateway snapshots synced from BPMN canvas (#48). */
   gateways?: { id: string; name: string; type: "exclusive" | "parallel" }[];
+  /** Persistent systems → BPMN data stores (+ submit send task). */
+  integration_targets?: string[];
 };
 
 export type ChatRole = "user" | "assistant";
@@ -110,22 +112,42 @@ function outputDirFor(id: string): string {
   return `output/sessions/${id}/`;
 }
 
-// Minimal default blueprint for a new session.
-function defaultBlueprint(title: string): Blueprint {
+/**
+ * Dummy blueprint for a brand-new session (MIC012 / Pertti).
+ * Gives BPMN a few editable elements until schema design (#25) supplies real fields.
+ */
+export function defaultBlueprint(title: string): Blueprint {
   return {
     name: title,
-    description: "Draft blueprint (mock).",
-    goal: "",
+    description:
+      "Placeholder blueprint until schema design — replace with the agreed output fields.",
+    goal: "Draft flow so BPMN and JSON are editable from the first session.",
     steps: [
-      { id: "input", name: "Input", type: "io", description: "User input" },
       {
-        id: "generate",
-        name: "Generation",
+        id: "input",
+        name: "Input",
+        type: "io",
+        description: "User or system input (placeholder)",
+      },
+      {
+        id: "process",
+        name: "Process",
         type: "ai",
         component: "LLM",
-        description: "Model response",
+        description: "Core GenAI step (placeholder)",
       },
-      { id: "output", name: "Response", type: "io", description: "Returned to the user" },
+      {
+        id: "review",
+        name: "Human review",
+        type: "human_review",
+        description: "Optional check before output (placeholder)",
+      },
+      {
+        id: "output",
+        name: "Output",
+        type: "io",
+        description: "Returned result (placeholder)",
+      },
     ],
   };
 }
@@ -190,6 +212,7 @@ function buildSeedSessions(): WizardSession[] {
       description:
         "Answers customers' most common questions in the online store.",
       goal: "Reduce customer service load by automating common questions.",
+      integration_targets: ["knowledge_base"],
       steps: [
         {
           id: "input",
@@ -252,6 +275,7 @@ function buildSeedSessions(): WizardSession[] {
       name: "Automatic invoice classification",
       description: "Classify incoming purchase invoices by cost center.",
       goal: "Speed up invoice handling with automatic pre-classification.",
+      integration_targets: ["finance_system"],
       steps: [
         {
           id: "ingest",

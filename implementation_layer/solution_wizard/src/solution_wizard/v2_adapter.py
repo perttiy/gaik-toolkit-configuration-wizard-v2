@@ -32,14 +32,69 @@ def _unique_art_id(base: str, used: set[str]) -> str:
     return out
 
 
+def _infer_artifact(
+    step: dict[str, Any],
+    *,
+    is_first: bool,
+    is_last: bool,
+) -> tuple[str, str]:
+    """Pick (artifact_id, artifact_type) for official BPMN data-object labels.
+
+    GAIK modeling guide: data objects are *data* (Audio File, Transcript,
+    Structured JSON), not copies of task names. Ids are chosen so
+    ``bpmn_generator._data_object_label`` yields those human labels.
+    """
+    step_type = str(step.get("type") or "ai")
+    name = str(step.get("name") or "").lower()
+    component = str(step.get("component") or "").lower()
+    blob = f"{name} {component}"
+
+    if step_type == "io" and is_first:
+        if any(w in blob for w in ("audio", "voice", "speech", "recording", "ään")):
+            return "voice_note_audio", "audio"
+        if any(w in blob for w in ("pdf", "document", "docx", "file upload")):
+            return "source_document", "pdf"
+        if any(w in blob for w in ("image", "photo", "kuva")):
+            return "source_image", "image"
+        if any(w in blob for w in ("video", "media")):
+            return "source_media", "video"
+        return "user_input", "text"
+
+    if any(w in blob for w in ("transcrib", "whisper", "speech-to-text", "stt")):
+        return "raw_transcript", "transcript"
+    if any(w in blob for w in ("enhance_transcript", "enhancetranscript", "enhance transcript")):
+        return "enhanced_transcript", "transcript"
+    if any(w in blob for w in ("schema", "ssg")):
+        return "extraction_schema", "schema"
+    if any(w in blob for w in ("extract", "structured", "field")):
+        return "structured_json", "structured_json"
+    if any(w in blob for w in ("subtitle", "caption")):
+        return "subtitle_file", "subtitle"
+    if any(w in blob for w in ("rag", "pgvector", "search", "index")):
+        return "search_result", "structured_json"
+    if any(w in blob for w in ("validat", "judge", "qa")):
+        return "validation_report", "validation_report"
+    if step_type == "human_review":
+        return (
+            ("reviewed_output", "structured_json")
+            if is_last
+            else ("draft_report", "structured_json")
+        )
+    if is_last:
+        return "final_output", "structured_json"
+    if step_type == "ai":
+        return "structured_json", "structured_json"
+    return "intermediate_text", "text"
+
+
 def _synthesize_artifacts_and_links(
     steps: list[dict[str, Any]],
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Create V1 artifacts + wire step inputs/outputs so BPMN gets data objects.
 
     V2 blueprints only have ordered steps. We invent one outgoing artifact per
-    step (named from the step) so the generator can emit official-style data
-    objects and associations between consecutive activities.
+    step using official-style data names (Audio File, Transcript, …) so the
+    generator can emit guide-compliant data objects and associations.
     """
     artifacts: dict[str, Any] = {}
     workflow_steps: list[dict[str, Any]] = []
@@ -52,19 +107,18 @@ def _synthesize_artifacts_and_links(
         step_type = str(step.get("type") or "ai")
         v1_type = v2_step_type(step_type)
         name = str(step.get("name") or sid)
-        art_base = _slugify(name) or _slugify(sid)
-        art_id = _unique_art_id(art_base, used_ids)
-
         is_first = i == 0
         is_last = i == len(steps) - 1
+        art_base, art_type = _infer_artifact(step, is_first=is_first, is_last=is_last)
+        art_id = _unique_art_id(art_base, used_ids)
+
         if step_type == "io" and is_first:
             artifacts[art_id] = {
-                "type": "text",
+                "type": art_type,
                 "source": "user_upload",
                 "optional": False,
             }
         else:
-            art_type = "structured_json" if step_type in ("ai", "human_review") else "text"
             artifacts[art_id] = {
                 "type": art_type,
                 "source": "generated",
@@ -94,12 +148,35 @@ def _synthesize_artifacts_and_links(
     return artifacts, workflow_steps
 
 
+def _normalize_integration_targets(v2: dict[str, Any]) -> list[str]:
+    """V2 → V1 ``technical_spec.integration_targets`` (BPMN data stores + send tasks).
+
+    Accepts ``integration_targets`` (preferred) or ``data_stores`` as a UI alias.
+    Empty / missing → no stores (same as V1 ``[]``).
+    """
+    raw = v2.get("integration_targets")
+    if raw is None:
+        raw = v2.get("data_stores")
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        token = str(item or "").strip()
+        if not token or token in seen:
+            continue
+        seen.add(token)
+        out.append(token)
+    return out
+
+
 def v2_to_v1_dict(v2: dict[str, Any], *, session_id: str = "session") -> dict[str, Any]:
     """Build a minimal valid V1 blueprint dict from V2 UI blueprint content."""
     name = (v2.get("name") or "Session").strip() or "Session"
     slug = _slugify(name)
     steps = list(v2.get("steps") or [])
     has_human_review = any(s.get("type") == "human_review" for s in steps)
+    integration_targets = _normalize_integration_targets(v2)
 
     artifacts, workflow_steps = _synthesize_artifacts_and_links(steps)
 
@@ -137,6 +214,7 @@ def v2_to_v1_dict(v2: dict[str, Any], *, session_id: str = "session") -> dict[st
             "output_types": ["structured_json"],
             "language": "fi",
             "human_review_required": has_human_review,
+            "integration_targets": integration_targets,
         },
         "target_output_spec": {
             "schema_name": "Output",

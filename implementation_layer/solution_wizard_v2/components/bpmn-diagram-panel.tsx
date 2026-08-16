@@ -240,6 +240,7 @@ export function BpmnDiagramPanel({
             className="btn-brand shrink-0"
             onClick={handleSave}
             disabled={saving}
+            data-testid="bpmn-save"
           >
             {saving ? savingLabel : saveLabel}
           </button>
@@ -302,6 +303,7 @@ export function BpmnDiagramPanel({
                   className="input-field w-full text-sm"
                   value={editName}
                   onChange={(e) => applyNameChange(e.target.value)}
+                  data-testid="bpmn-property-name"
                 />
               </label>
               <div className="flex flex-col gap-1">

@@ -51,5 +51,14 @@ export function parseBlueprintJson(text: string): Blueprint | null {
           ),
         }
       : {}),
+    ...(() => {
+      const raw = obj.integration_targets ?? obj.data_stores;
+      if (!Array.isArray(raw)) return {};
+      const integration_targets = raw
+        .filter((t): t is string => typeof t === "string")
+        .map((t) => t.trim())
+        .filter(Boolean);
+      return integration_targets.length ? { integration_targets } : {};
+    })(),
   };
 }
