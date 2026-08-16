@@ -34,8 +34,10 @@ test.describe("Wizard V2 demo video", () => {
 
     await page.getByRole("tab", { name: "Työnkulku" }).click();
     await page.waitForTimeout(1400);
-    await page.getByRole("tab", { name: "Blueprint (JSON)" }).click();
+    await page.getByRole("tab", { name: "Blueprint" }).click();
     await page.waitForTimeout(900);
+    await page.getByTestId("blueprint-json-toggle").click();
+    await page.waitForTimeout(400);
 
     const editor = page.getByTestId("blueprint-json-editor");
     await expect(editor).toBeVisible();

@@ -61,8 +61,10 @@ test.describe("Wizard V2 BPMN undo demo video", () => {
     await page.waitForTimeout(1600);
 
     // Create a new version via JSON (demo-friendly; sync lint can fail in mock).
-    await page.getByRole("tab", { name: "Blueprint (JSON)" }).click();
+    await page.getByRole("tab", { name: "Blueprint" }).click();
     await page.waitForTimeout(900);
+    await page.getByTestId("blueprint-json-toggle").click();
+    await page.waitForTimeout(400);
 
     const editor = page.getByTestId("blueprint-json-editor");
     await expect(editor).toBeVisible();
@@ -101,8 +103,8 @@ test.describe("Wizard V2 BPMN undo demo video", () => {
     });
     await page.waitForTimeout(1800);
 
-    // Confirm restore on JSON tab briefly.
-    await page.getByRole("tab", { name: "Blueprint (JSON)" }).click();
+    // Confirm restore on Blueprint tab briefly.
+    await page.getByRole("tab", { name: "Blueprint" }).click();
     await page.waitForTimeout(900);
     const after = JSON.parse(await editor.inputValue()) as {
       steps: Array<{ id: string; name: string }>;

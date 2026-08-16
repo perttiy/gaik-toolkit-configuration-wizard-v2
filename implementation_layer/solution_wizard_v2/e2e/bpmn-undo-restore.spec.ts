@@ -42,7 +42,8 @@ test.describe("BPMN canvas undo / restore (#67)", () => {
     });
 
     // Create a new blueprint version via JSON (avoids bpmnlint sync path).
-    await page.getByRole("tab", { name: "Blueprint (JSON)" }).click();
+    await page.getByRole("tab", { name: "Blueprint" }).click();
+    await page.getByTestId("blueprint-json-toggle").click();
     const editor = page.getByTestId("blueprint-json-editor");
     await expect(editor).toBeVisible();
     const original = await editor.inputValue();
@@ -86,7 +87,7 @@ test.describe("BPMN canvas undo / restore (#67)", () => {
       fullPage: true,
     });
 
-    await page.getByRole("tab", { name: "Blueprint (JSON)" }).click();
+    await page.getByRole("tab", { name: "Blueprint" }).click();
     const after = JSON.parse(await editor.inputValue()) as {
       steps: Array<{ id: string; name: string }>;
     };

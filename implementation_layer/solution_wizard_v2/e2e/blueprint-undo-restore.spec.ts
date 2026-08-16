@@ -18,7 +18,8 @@ test.describe("Blueprint undo / restore (#67)", () => {
     await page.getByRole("button", { name: "Aloita uusi" }).click();
     await page.waitForURL(/\/sessions\//);
 
-    await page.getByRole("tab", { name: "Blueprint (JSON)" }).click();
+    await page.getByRole("tab", { name: "Blueprint" }).click();
+    await page.getByTestId("blueprint-json-toggle").click();
     const editor = page.getByTestId("blueprint-json-editor");
     await expect(editor).toBeVisible();
 

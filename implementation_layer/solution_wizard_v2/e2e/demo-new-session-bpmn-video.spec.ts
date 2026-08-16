@@ -8,7 +8,7 @@ import path from "node:path";
  * Demo — create from scratch → dummy BPMN → JSON + BPMN edits (MIC012).
  *
  *   PLAYWRIGHT_SKIP_WEBSERVER=true \
- *   PLAYWRIGHT_BASE_URL=http://127.0.0.1:3026 \
+ *   PLAYWRIGHT_BASE_URL=http://127.0.0.1:3050 \
  *   PLAYWRIGHT_SLOW_MO=700 \
  *   npx playwright test e2e/demo-new-session-bpmn-video.spec.ts --project=chromium
  *
@@ -30,7 +30,11 @@ test.describe("Wizard V2 new-session BPMN demo video", () => {
   test.skip(!!process.env.CI, "demo video — run locally with PLAYWRIGHT_SLOW_MO");
 
   test.beforeEach(async ({ request }) => {
-    await resetMockSessions(request);
+    try {
+      await resetMockSessions(request);
+    } catch {
+      /* API mode */
+    }
   });
 
   test("create → BPMN → JSON edit → BPMN edit", async ({ page }) => {
@@ -45,7 +49,8 @@ test.describe("Wizard V2 new-session BPMN demo video", () => {
     await page.locator("#session-title").fill(title);
     await page.waitForTimeout(800);
     await page.getByRole("button", { name: "Aloita uusi" }).click();
-    await page.waitForURL(/\/sessions\/ses_/);
+    // Mock ids are ses_*; wizard_api returns UUIDs.
+    await page.waitForURL(/\/sessions\/(ses_[a-f0-9]+|[0-9a-f-]{36})$/i);
     await expect(page.getByRole("heading", { name: title, level: 1 })).toBeVisible();
     await page.waitForTimeout(1400);
 
@@ -86,8 +91,10 @@ test.describe("Wizard V2 new-session BPMN demo video", () => {
     await page.waitForTimeout(1800);
 
     // --- JSON edit ---
-    await page.getByRole("tab", { name: "Blueprint (JSON)" }).click();
+    await page.getByRole("tab", { name: "Blueprint" }).click();
     await page.waitForTimeout(900);
+    await page.getByTestId("blueprint-json-toggle").click();
+    await page.waitForTimeout(400);
     const editor = page.getByTestId("blueprint-json-editor");
     await expect(editor).toBeVisible();
     const parsed = JSON.parse(await editor.inputValue()) as {
@@ -130,7 +137,7 @@ test.describe("Wizard V2 new-session BPMN demo video", () => {
     await expect(saved.or(lintBlocked).first()).toBeVisible({ timeout: 20_000 });
     await page.waitForTimeout(1600);
 
-    await page.getByRole("tab", { name: "Blueprint (JSON)" }).click();
+    await page.getByRole("tab", { name: "Blueprint" }).click();
     await page.waitForTimeout(1200);
     const after = JSON.parse(await editor.inputValue()) as {
       steps: Array<{ id: string; name: string }>;
