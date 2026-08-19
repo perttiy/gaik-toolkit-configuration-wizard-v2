@@ -121,6 +121,7 @@ export type Dict = {
   gate1Approve: string;
   gatheringCollecting: string;
   gatheringPrompt: string;
+  requirementPoints: string[];
   ready: string;
   phasesTitle: string;
   saved: string;
@@ -252,6 +253,21 @@ const fi: Dict = {
   gatheringCollecting: "Kerätään vaatimuksia",
   gatheringPrompt:
     "Kuvaa liiketoimintaongelmasi chatissa. Wizard kerää tarvittavat vaatimukset ja muotoilee niistä ratkaisun — arkkitehtuuria ja kaavioita ei vielä tässä vaiheessa.",
+  requirementPoints: [
+    "Mitä tehtävää järjestelmän tulee tukea?",
+    "Ketkä käyttävät järjestelmää?",
+    "Mitä syötteitä järjestelmä vastaanottaa?",
+    "Mitä tuotosta järjestelmän tulee tuottaa?",
+    "Mitkä kentät, osiot tai vastaustyypit vaaditaan?",
+    "Mitä kieltä syötteessä ja tuotoksessa käytetään?",
+    "Tarvitaanko toimialakohtaista sanastoa?",
+    "Vaatiiko käyttötapaus ihmistarkistuksen?",
+    "Onko yksityisyys-, tietoturva- tai compliance-rajoitteita?",
+    "Pitääkö käyttää tiettyä mallitoimittajaa?",
+    "Integroidaanko tuotos toiseen järjestelmään?",
+    "Miten laatua arvioidaan?",
+    "Mitä ensimmäisen PoC:n tulee osoittaa?",
+  ],
   ready: "Valmis",
   phasesTitle: "Vaiheet",
   saved: "Tallennettu",
@@ -401,6 +417,21 @@ const en: Dict = {
   gatheringCollecting: "Collecting requirements",
   gatheringPrompt:
     "Describe your business problem in the chat. The wizard collects the requirements it needs and shapes them into a solution — no architecture or diagrams yet at this stage.",
+  requirementPoints: [
+    "What task should the system support?",
+    "Who will use the system?",
+    "What input artifacts will the system receive?",
+    "What output should the system produce?",
+    "Which fields, sections, or answer types are required?",
+    "What language is used in the input and output?",
+    "Is domain-specific vocabulary needed?",
+    "Does the use case require human review?",
+    "Are there privacy, security, or compliance constraints?",
+    "Should the solution use a specific model provider?",
+    "Should the output be integrated into another system?",
+    "How should quality be evaluated?",
+    "What should the first PoC demonstrate?",
+  ],
   ready: "Done",
   phasesTitle: "Steps",
   saved: "Saved",
