@@ -9,6 +9,7 @@ import { WorkspacePanel } from "@/components/workspace-panel";
 import { GateTimeline } from "@/components/gate-timeline";
 import { Gate1Review } from "@/components/gate1-review";
 import { GatheringView } from "@/components/gathering-view";
+import { GatheringAdvanceButton } from "@/components/gathering-advance-button";
 import { FieldSchemaEditor } from "@/components/field-schema-editor";
 import { advance, regress, approve, reject, requestChanges } from "./actions";
 import { getSessionForUser } from "@/lib/session-access";
@@ -37,9 +38,7 @@ export default async function SessionPage({
   const isGate1 = session.step === 4;
   const isSpec = session.step === 3;
   const isGathering = session.step <= 3;
-  // Reference checklist is a localized UI list (fi/en); the answered count comes
-  // from the session (API mode derives it from the step, mock records answers).
-  const points = t.requirementPoints;
+  const points = session.requirements?.points ?? [];
   const answers = session.requirements?.answers ?? [];
   const atEnd = session.step >= PHASE_COUNT;
 
@@ -205,6 +204,11 @@ export default async function SessionPage({
                   </button>
                 </form>
               </div>
+            ) : isGathering ? (
+              <GatheringAdvanceButton
+                label={t.nextPhase}
+                hint={t.gatheringAdvanceHint}
+              />
             ) : (
               <form action={advance}>
                 <input type="hidden" name="id" value={session.id} />
@@ -225,6 +229,8 @@ export default async function SessionPage({
           inputLabel={t.chatInputLabel}
           sendLabel={t.chatSend}
           streamFailedLabel={t.streamFailed}
+          thinkingLabel={t.chatThinking}
+          wide={isGathering}
           hideChatLabel={t.hideChat}
           showChatLabel={t.showChat}
           railBadge={`${t.phaseUpper} ${session.step}`}
