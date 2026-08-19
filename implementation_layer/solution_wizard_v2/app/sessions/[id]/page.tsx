@@ -37,7 +37,9 @@ export default async function SessionPage({
   const isGate1 = session.step === 4;
   const isSpec = session.step === 3;
   const isGathering = session.step <= 3;
-  const points = session.requirements?.points ?? [];
+  // Reference checklist is a localized UI list (fi/en); the answered count comes
+  // from the session (API mode derives it from the step, mock records answers).
+  const points = t.requirementPoints;
   const answers = session.requirements?.answers ?? [];
   const atEnd = session.step >= PHASE_COUNT;
 
