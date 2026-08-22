@@ -5,6 +5,20 @@
 // NOTE: not persistent storage. Data lives in dev-server memory and resets on
 // restart. Real persistence is wired to the same model later.
 
+import {
+  buildGateStatus,
+  transition,
+  GATE_STEPS,
+  isGateStep,
+  type GateStatus,
+  type WizardEvent,
+} from "./wizard-state-machine";
+import { REQUIREMENT_POINTS, openingQuestion } from "./requirements-model";
+
+// Re-export the state-machine structure so existing importers keep their path.
+export { GATE_STEPS, isGateStep };
+export type { GateStatus };
+
 // Wizard phase model. Gates: Gate 1 requirement completeness (after
 // Specification), Gate 2 workflow validation (after Blueprint+BPMN),
 // Gate 3 PoC validation, Gate 4 runtime validation.
@@ -32,15 +46,6 @@ export const BPMN_VISUAL_STEP = 8;
 export function isBpmnVisualPhase(step: number): boolean {
   return step >= BPMN_VISUAL_STEP;
 }
-
-// 1-based gate step numbers: Gate 1 = 4, Gate 2 = 9, Gate 3 = 11, Gate 4 = 13.
-export const GATE_STEPS = [4, 9, 11, 13];
-
-export function isGateStep(step: number): boolean {
-  return GATE_STEPS.includes(step);
-}
-
-export type GateStatus = "locked" | "pending" | "approved" | "rejected";
 
 export type BlueprintVersion = {
   version: number;
@@ -98,16 +103,16 @@ export type WizardSession = {
   activeVersion: number;
   messages: ChatMessage[]; // chat-historia (mock)
   blueprint: Blueprint; // active version content (mock)
+  // Requirement gathering state (steps 1–3). `points` are the questions the
+  // backend is collecting (from requirements-model here; wizard_api later);
+  // `answers` are the user's replies in order. The frontend renders these — it
+  // never hardcodes the questions. The live agent (#29) replaces the source.
+  requirements?: { points: string[]; answers: string[] };
 };
 
-// Derive gate statuses from the current step: passed = approved, current =
-// pending, future = locked.
-function buildGateStatus(step: number): Record<number, GateStatus> {
-  const m: Record<number, GateStatus> = {};
-  for (const g of GATE_STEPS) {
-    m[g] = step > g ? "approved" : step === g ? "pending" : "locked";
-  }
-  return m;
+/** Fresh gathering state for a new session. */
+function newRequirements(): { points: string[]; answers: string[] } {
+  return { points: REQUIREMENT_POINTS, answers: [] };
 }
 
 function outputDirFor(id: string): string {
@@ -182,6 +187,20 @@ function seedSession(
       content: i === versionCount - 1 ? structuredClone(blueprint) : undefined,
     }),
   );
+  // In gathering with an empty chat, the backend opens with the first question
+  // as a real (persisted) message — not a derived, disappearing greeting.
+  const gathering = step <= 3;
+  const seededMessages =
+    gathering && messages.length === 0
+      ? [
+          {
+            id: `msg_open_${id}`,
+            role: "assistant" as ChatRole,
+            content: openingQuestion(),
+            createdAt: created,
+          },
+        ]
+      : messages;
   return {
     id,
     userId,
@@ -194,8 +213,9 @@ function seedSession(
     updatedAt: created,
     versions,
     activeVersion: versionCount,
-    messages,
+    messages: seededMessages,
     blueprint,
+    requirements: newRequirements(),
   };
 }
 
@@ -394,8 +414,18 @@ export function createSession(userId: string, title: string): WizardSession {
       },
     ],
     activeVersion: 1,
-    messages: [],
+    // A new session starts in gathering: the backend opens with the first
+    // question as a persisted assistant message.
+    messages: [
+      {
+        id: `msg_open_${id}`,
+        role: "assistant",
+        content: openingQuestion(),
+        createdAt: ts,
+      },
+    ],
     blueprint,
+    requirements: newRequirements(),
   };
   sessions.push(s);
   return s;
@@ -427,51 +457,109 @@ export function postMessage(
   return s;
 }
 
+// --- State transitions (delegated to the wizard state machine) --------------
+
+// Apply a state-machine event to a session in place, mirroring the transition's
+// side effects: a step advance records a new blueprint version and `done` flips
+// the status. A no-op transition leaves the session untouched.
+function applyTransition(s: WizardSession, event: WizardEvent): WizardSession {
+  const t = transition({ step: s.step, gateStatus: s.gateStatus }, event);
+  if (t.noop) return s;
+  s.step = t.state.step;
+  s.gateStatus = t.state.gateStatus;
+  if (t.advanced) {
+    const v = s.versions.length + 1;
+    s.versions.push({
+      version: v,
+      createdAt: now(),
+      note: `Vaihe ${s.step}`,
+      content: structuredClone(s.blueprint),
+    });
+    s.activeVersion = v;
+  }
+  s.status = t.done ? "done" : "active";
+  s.updatedAt = now();
+  return s;
+}
+
 // Advance to the next step. On a gate step, blocked until approved.
 export function advanceSession(id: string): WizardSession | undefined {
   const s = getSession(id);
-  if (!s || s.step >= PHASE_COUNT) return s;
-  if (isGateStep(s.step) && s.gateStatus[s.step] !== "approved") return s;
-
-  s.step += 1;
-  s.gateStatus = { ...s.gateStatus, ...buildGateStatus(s.step) };
-  // Each step produces a new blueprint version.
-  const v = s.versions.length + 1;
-  s.versions.push({
-    version: v,
-    createdAt: now(),
-    note: `Vaihe ${s.step}`,
-    content: structuredClone(s.blueprint),
-  });
-  s.activeVersion = v;
-  s.status = s.step >= PHASE_COUNT ? "done" : "active";
-  s.updatedAt = now();
-  return s;
+  if (!s) return s;
+  return applyTransition(s, "ADVANCE");
 }
 
 // Go back one step (does not remove versions).
 export function regressSession(id: string): WizardSession | undefined {
   const s = getSession(id);
-  if (!s || s.step <= 1) return s;
-  s.step -= 1;
-  s.gateStatus = buildGateStatus(s.step);
+  if (!s) return s;
+  return applyTransition(s, "REGRESS");
+}
+
+// Approve the current gate and advance (final gate → session done).
+export function approveGate(id: string): WizardSession | undefined {
+  const s = getSession(id);
+  if (!s) return s;
+  return applyTransition(s, "APPROVE_GATE");
+}
+
+// Reject the current gate. Stays on the gate step with a rejected status.
+export function rejectGate(id: string): WizardSession | undefined {
+  const s = getSession(id);
+  if (!s) return s;
+  return applyTransition(s, "REJECT_GATE");
+}
+
+// Request changes: send the session back to the step before the gate for
+// revision and record the reviewer feedback in the chat. The live agent that
+// acts on the feedback is wired in #29–31; here it is mocked.
+export function requestGateChanges(
+  id: string,
+  feedback: string,
+  ack: string,
+): WizardSession | undefined {
+  const s = getSession(id);
+  if (!s) return s;
+  const t = transition({ step: s.step, gateStatus: s.gateStatus }, "REQUEST_CHANGES");
+  if (t.noop) return s;
+  s.step = t.state.step;
+  s.gateStatus = t.state.gateStatus;
   s.status = "active";
+  const mkId = () => "msg_" + crypto.randomUUID().slice(0, 8);
+  if (feedback.trim()) {
+    s.messages.push({
+      id: mkId(),
+      role: "user",
+      content: feedback,
+      createdAt: now(),
+    });
+  }
+  s.messages.push({
+    id: mkId(),
+    role: "assistant",
+    content: ack,
+    createdAt: now(),
+  });
   s.updatedAt = now();
   return s;
 }
 
-// Approve the current gate and advance.
-export function approveGate(id: string): WizardSession | undefined {
+// Record one gathered requirement answer (steps 1–3, in point order). When every
+// point has an answer, the state machine advances to Gate 1.
+export function recordRequirementAnswer(
+  id: string,
+  answer: string,
+): WizardSession | undefined {
   const s = getSession(id);
-  if (!s || !isGateStep(s.step)) return s;
-  s.gateStatus = { ...s.gateStatus, [s.step]: "approved" };
+  if (!s?.requirements) return s;
+  const { points, answers } = s.requirements;
+  if (answers.length >= points.length) return s;
+  s.requirements = { points, answers: [...answers, answer.trim()] };
   s.updatedAt = now();
-  // Final gate approved -> session done, no further advance.
-  if (s.step >= PHASE_COUNT) {
-    s.status = "done";
-    return s;
+  if (s.requirements.answers.length >= points.length) {
+    applyTransition(s, "REQUIREMENTS_COMPLETE");
   }
-  return advanceSession(id);
+  return s;
 }
 
 export function updateBlueprint(

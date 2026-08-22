@@ -117,6 +117,17 @@ export type Dict = {
   previous: string;
   nextPhase: string;
   approveGate: string;
+  rejectGate: string;
+  requestChanges: string;
+  changesRequested: string;
+  gate1Title: string;
+  gate1Intro: string;
+  gate1ChecklistTitle: string;
+  gate1Answered: string;
+  gate1Approve: string;
+  gatheringCollecting: string;
+  gatheringPrompt: string;
+  gatheringAdvanceHint: string;
   ready: string;
   phasesTitle: string;
   saved: string;
@@ -128,6 +139,8 @@ export type Dict = {
   showChat: string;
   phaseProgressNav: string;
   streamFailed: string;
+  chatThinking: string;
+  chatBusy: string;
 
   phases: string[];
   gates: { locked: string; pending: string; approved: string; rejected: string };
@@ -241,6 +254,21 @@ const fi: Dict = {
   previous: "← Edellinen",
   nextPhase: "Seuraava vaihe →",
   approveGate: "Hyväksy gate →",
+  rejectGate: "Hylkää",
+  requestChanges: "Pyydä muutoksia",
+  changesRequested:
+    "Muutospyyntö kirjattu. Palattiin speksivaiheeseen tarkennusta varten.",
+  gate1Title: "Vaatimusten tarkistus",
+  gate1Intro:
+    "Tarkista että vaiheissa 1–3 kerätyt vaatimukset ovat riittävät. Hyväksyntä lukitsee vaatimukset ja käynnistää arkkitehtuurin suunnittelun.",
+  gate1ChecklistTitle: "Kerätyt vaatimukset",
+  gate1Answered: "kohtaa vastattu",
+  gate1Approve: "Hyväksy vaatimukset & Jatka →",
+  gatheringCollecting: "Kerätään vaatimuksia",
+  gatheringPrompt:
+    "Kuvaa liiketoimintaongelmasi chatissa. Wizard kerää tarvittavat vaatimukset ja muotoilee niistä ratkaisun — arkkitehtuuria ja kaavioita ei vielä tässä vaiheessa.",
+  gatheringAdvanceHint:
+    "Vastaa ensin wizardin kysymyksiin chatissa — se etenee automaattisesti kun vaatimukset ovat kasassa.",
   ready: "Valmis",
   phasesTitle: "Vaiheet",
   saved: "Tallennettu",
@@ -252,6 +280,9 @@ const fi: Dict = {
   showChat: "Näytä keskustelu",
   phaseProgressNav: "Wizard-vaiheet",
   streamFailed: "Vastauksen striimaus epäonnistui.",
+  chatThinking: "Wizard miettii…",
+  chatBusy:
+    "Wizard vastaa vielä edelliseen viestiin — hetki, ja lähetä uudelleen.",
 
   phases: [
     "Session start",
@@ -383,6 +414,21 @@ const en: Dict = {
   previous: "← Previous",
   nextPhase: "Next step →",
   approveGate: "Approve gate →",
+  rejectGate: "Reject",
+  requestChanges: "Request changes",
+  changesRequested:
+    "Changes requested. Returned to the specification step for revision.",
+  gate1Title: "Requirements review",
+  gate1Intro:
+    "Check that the requirements gathered in steps 1–3 are sufficient. Approving locks the requirements and starts the architecture design.",
+  gate1ChecklistTitle: "Gathered requirements",
+  gate1Answered: "points answered",
+  gate1Approve: "Approve requirements & Continue →",
+  gatheringCollecting: "Collecting requirements",
+  gatheringPrompt:
+    "Describe your business problem in the chat. The wizard collects the requirements it needs and shapes them into a solution — no architecture or diagrams yet at this stage.",
+  gatheringAdvanceHint:
+    "Please answer the wizard's questions in the chat first — it advances automatically once the requirements are complete.",
   ready: "Done",
   phasesTitle: "Steps",
   saved: "Saved",
@@ -394,6 +440,9 @@ const en: Dict = {
   showChat: "Show chat",
   phaseProgressNav: "Wizard steps",
   streamFailed: "Failed to stream the response.",
+  chatThinking: "The wizard is thinking…",
+  chatBusy:
+    "The wizard is still finishing the previous reply — please wait a moment and resend.",
 
   phases: [
     "Session start",

@@ -7,7 +7,11 @@ import { signOut } from "@/app/login/actions";
 import { ChatDock } from "@/components/chat-dock";
 import { WorkspacePanel } from "@/components/workspace-panel";
 import { GateTimeline } from "@/components/gate-timeline";
-import { advance, regress, approve } from "./actions";
+import { Gate1Review } from "@/components/gate1-review";
+import { GatheringView } from "@/components/gathering-view";
+import { GatheringAdvanceButton } from "@/components/gathering-advance-button";
+import { FieldSchemaEditor } from "@/components/field-schema-editor";
+import { advance, regress, approve, reject, requestChanges } from "./actions";
 import { getSessionForUser } from "@/lib/session-access";
 import {
   PHASE_COUNT,
@@ -29,8 +33,19 @@ export default async function SessionPage({
 
   const currentPhase = t.phases[session.step - 1];
   const onGate = isGateStep(session.step);
-  const gatePending = onGate && session.gateStatus[session.step] === "pending";
+  const gateBlocking =
+    onGate && session.gateStatus[session.step] !== "approved";
+  const isGate1 = session.step === 4;
+  const isSpec = session.step === 3;
+  const isGathering = session.step <= 3;
+  const points = session.requirements?.points ?? [];
+  const answers = session.requirements?.answers ?? [];
   const atEnd = session.step >= PHASE_COUNT;
+
+  // The requirement questions come from the backend (session.requirements) and
+  // reach the user as chat messages — the opening question is a real seeded
+  // message. The greeting stays a stable welcome; it no longer embeds a question.
+  const chatGreeting = t.chatGreeting;
 
   const gateSteps = Array.from({ length: PHASE_COUNT }, (_, i) => i + 1).filter(
     isGateStep,
@@ -108,35 +123,57 @@ export default async function SessionPage({
                 {currentPhase}
               </h2>
             </div>
-            <span className="text-xs text-text-muted">
-              {t.activeBlueprint} v{session.activeVersion} ·{" "}
-              {session.versions.length} {t.versions}
-            </span>
+            {!isGate1 && !isGathering && (
+              <span className="text-xs text-text-muted">
+                {t.activeBlueprint} v{session.activeVersion} ·{" "}
+                {session.versions.length} {t.versions}
+              </span>
+            )}
           </div>
 
           <div className="relative z-10 flex-1 min-h-0 overflow-y-auto flex flex-col p-6">
-            {gatePending && (
-              <div
-                role="status"
-                className="shrink-0 mb-4 rounded-md border border-warning-border bg-warning-bg px-3 py-2.5 text-sm text-warning-text flex items-start gap-2"
-              >
-                <span
-                  className="h-1.5 w-1.5 mt-1.5 rounded-full bg-warning-text shrink-0"
-                  aria-hidden
-                />
-                <span>{t.gateNotice}</span>
-              </div>
-            )}
+            {isGate1 ? (
+              <Gate1Review
+                sessionId={session.id}
+                points={points}
+                answers={answers}
+                t={t}
+              />
+            ) : isSpec ? (
+              <FieldSchemaEditor />
+            ) : isGathering ? (
+              <GatheringView
+                phaseTitle={currentPhase}
+                points={points}
+                answers={answers}
+                t={t}
+              />
+            ) : (
+              <>
+                {gateBlocking && (
+                  <div
+                    role="status"
+                    className="shrink-0 mb-4 rounded-md border border-warning-border bg-warning-bg px-3 py-2.5 text-sm text-warning-text flex items-start gap-2"
+                  >
+                    <span
+                      className="h-1.5 w-1.5 mt-1.5 rounded-full bg-warning-text shrink-0"
+                      aria-hidden
+                    />
+                    <span>{t.gateNotice}</span>
+                  </div>
+                )}
 
-            <WorkspacePanel
-              sessionId={session.id}
-              sessionTitle={session.title}
-              wizardStep={session.step}
-              blueprint={session.blueprint}
-              versions={session.versions}
-              activeVersion={session.activeVersion}
-              t={t}
-            />
+                <WorkspacePanel
+                  sessionId={session.id}
+                  sessionTitle={session.title}
+                  wizardStep={session.step}
+                  blueprint={session.blueprint}
+                  versions={session.versions}
+                  activeVersion={session.activeVersion}
+                  t={t}
+                />
+              </>
+            )}
           </div>
 
           <div className="relative z-10 shrink-0 flex items-center justify-between px-6 py-3.5 border-t border-border">
@@ -147,13 +184,33 @@ export default async function SessionPage({
               </button>
             </form>
 
-            {gatePending ? (
-              <form action={approve}>
-                <input type="hidden" name="id" value={session.id} />
-                <button type="submit" className="btn-gold">
-                  {t.approveGate}
-                </button>
-              </form>
+            {!isGate1 &&
+              (gateBlocking ? (
+              <div className="flex items-center gap-2">
+                <form action={requestChanges}>
+                  <input type="hidden" name="id" value={session.id} />
+                  <button type="submit" className="btn-secondary">
+                    {t.requestChanges}
+                  </button>
+                </form>
+                <form action={reject}>
+                  <input type="hidden" name="id" value={session.id} />
+                  <button type="submit" className="btn-ghost">
+                    {t.rejectGate}
+                  </button>
+                </form>
+                <form action={approve}>
+                  <input type="hidden" name="id" value={session.id} />
+                  <button type="submit" className="btn-gold">
+                    {t.approveGate}
+                  </button>
+                </form>
+              </div>
+            ) : isGathering ? (
+              <GatheringAdvanceButton
+                label={t.nextPhase}
+                hint={t.gatheringAdvanceHint}
+              />
             ) : (
               <form action={advance}>
                 <input type="hidden" name="id" value={session.id} />
@@ -161,7 +218,7 @@ export default async function SessionPage({
                   {atEnd ? t.ready : t.nextPhase}
                 </button>
               </form>
-            )}
+            ))}
           </div>
         </main>
 
@@ -169,11 +226,13 @@ export default async function SessionPage({
           sessionId={session.id}
           initialMessages={session.messages}
           chatTitle={t.chat}
-          greeting={t.chatGreeting}
+          greeting={chatGreeting}
           inputPlaceholder={t.chatInputPlaceholder}
           inputLabel={t.chatInputLabel}
           sendLabel={t.chatSend}
           streamFailedLabel={t.streamFailed}
+          thinkingLabel={t.chatThinking}
+          wide={isGathering}
           hideChatLabel={t.hideChat}
           showChatLabel={t.showChat}
           railBadge={`${t.phaseUpper} ${session.step}`}

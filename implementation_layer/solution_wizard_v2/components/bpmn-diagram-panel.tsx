@@ -109,7 +109,8 @@ export function BpmnDiagramPanel({
   const modelerRef = useRef<BpmnModelerHandle>(null);
   const titleId = useId();
   const propsTitleId = useId();
-  const [canvasTheme, setCanvasTheme] = useState<BpmnCanvasTheme>("light");
+  // Match readBpmnCanvasTheme() SSR default; localStorage applied in useEffect.
+  const [canvasTheme, setCanvasTheme] = useState<BpmnCanvasTheme>("gaik-v2");
   const [saving, setSaving] = useState(false);
   const [undoing, setUndoing] = useState(false);
   const [saveError, setSaveError] = useState(false);
