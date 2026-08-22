@@ -101,6 +101,25 @@ export type Dict = {
   wsJsonUndoError: string;
   wsJsonUndoHint: string;
   wsJsonUndoDisabled: string;
+  wsFormName: string;
+  wsFormDescription: string;
+  wsFormSteps: string;
+  wsFormStepType: string;
+  wsFormStepComponent: string;
+  wsFormStepComponentNone: string;
+  wsFormStepDescription: string;
+  wsFormAddStep: string;
+  wsFormRemoveStep: string;
+  wsFormMoveUp: string;
+  wsFormMoveDown: string;
+  wsFormDevJson: string;
+  wsFormInvalid: string;
+  wsFormEmptySteps: string;
+  wsFormNameHint: string;
+  wsFormTypeHint: string;
+  wsFormComponentHint: string;
+  wsFormExpandStep: string;
+  wsFormCollapseStep: string;
   pocRun: string;
   pocRunning: string;
   pocRerun: string;
@@ -188,7 +207,7 @@ const fi: Dict = {
   workspacePlaceholder:
     "BPMN-canvas / JSON-blueprint / PoC / dokumentaatio (placeholder). Tämän vaiheen sisältö renderöityy tähän.",
   wsTabFlow: "Työnkulku",
-  wsTabJson: "Blueprint (JSON)",
+  wsTabJson: "Blueprint",
   wsTabPoc: "PoC",
   wsBlueprintGoal: "Tavoite",
   wsStepAi: "AI-vaihe",
@@ -230,13 +249,34 @@ const fi: Dict = {
   wsJsonSaved: "Tallennettu",
   wsJsonInvalid: "Virheellinen blueprint-JSON",
   wsJsonHint:
-    "Muokkaa blueprint-JSONia suoraan. Tallenna päivittää sessionin ja generoi BPMN-kaavion uudelleen Työnkulku-välilehdellä. Kumoa palauttaa edellisen version.",
+    "Muokkaa blueprintiä lomakkeella. Tallenna päivittää sessionin ja generoi BPMN-kaavion uudelleen Työnkulku-välilehdellä. Kumoa palauttaa edellisen version.",
   wsJsonUndo: "Kumoa",
   wsJsonUndoing: "Kumotaan…",
   wsJsonUndone: "Edellinen versio palautettu",
   wsJsonUndoError: "Kumoaminen epäonnistui",
   wsJsonUndoHint: "Palauta versio {version}",
   wsJsonUndoDisabled: "Ei aiempaa versiota",
+  wsFormName: "Nimi",
+  wsFormDescription: "Kuvaus",
+  wsFormSteps: "Työnkulun vaiheet",
+  wsFormStepType: "Tyyppi",
+  wsFormStepComponent: "Komponentti",
+  wsFormStepComponentNone: "Ei komponenttia",
+  wsFormStepDescription: "Kuvaus",
+  wsFormAddStep: "Lisää vaihe",
+  wsFormRemoveStep: "Poista vaihe",
+  wsFormMoveUp: "Siirrä ylös",
+  wsFormMoveDown: "Siirrä alas",
+  wsFormDevJson: "Kehittäjänäkymä (JSON)",
+  wsFormInvalid: "Täytä nimi ja jokaisen vaiheen nimi.",
+  wsFormEmptySteps: "Ei vaiheita vielä. Lisää ensimmäinen vaihe.",
+  wsFormNameHint: "Sama nimi näkyy ja on muokattavissa myös BPMN-kaaviossa.",
+  wsFormTypeHint:
+    "I/O = syöte tai tuloste · AI-vaihe = tekoälyaskel · Ihmistarkistus = manuaalinen tarkistus.",
+  wsFormComponentHint:
+    "GAIK-komponentti joka toteuttaa vaiheen (valinnainen).",
+  wsFormExpandStep: "Näytä vaiheen tiedot",
+  wsFormCollapseStep: "Piilota vaiheen tiedot",
   pocRun: "Aja PoC",
   pocRunning: "Ajetaan…",
   pocRerun: "Aja PoC uudelleen",
@@ -349,7 +389,7 @@ const en: Dict = {
   workspacePlaceholder:
     "BPMN canvas / JSON blueprint / PoC / documentation (placeholder). This step's content renders here.",
   wsTabFlow: "Workflow",
-  wsTabJson: "Blueprint (JSON)",
+  wsTabJson: "Blueprint",
   wsTabPoc: "PoC",
   wsBlueprintGoal: "Goal",
   wsStepAi: "AI step",
@@ -391,13 +431,33 @@ const en: Dict = {
   wsJsonSaved: "Saved",
   wsJsonInvalid: "Invalid blueprint JSON",
   wsJsonHint:
-    "Edit the blueprint JSON directly. Save updates the session and regenerates the BPMN diagram on the Workflow tab. Undo restores the previous version.",
+    "Edit the blueprint with a form. Save updates the session and regenerates the BPMN diagram on the Workflow tab. Undo restores the previous version.",
   wsJsonUndo: "Undo",
   wsJsonUndoing: "Undoing…",
   wsJsonUndone: "Previous version restored",
   wsJsonUndoError: "Undo failed",
   wsJsonUndoHint: "Restore version {version}",
   wsJsonUndoDisabled: "No previous version",
+  wsFormName: "Name",
+  wsFormDescription: "Description",
+  wsFormSteps: "Workflow steps",
+  wsFormStepType: "Type",
+  wsFormStepComponent: "Component",
+  wsFormStepComponentNone: "No component",
+  wsFormStepDescription: "Description",
+  wsFormAddStep: "Add step",
+  wsFormRemoveStep: "Remove step",
+  wsFormMoveUp: "Move up",
+  wsFormMoveDown: "Move down",
+  wsFormDevJson: "Developer view (JSON)",
+  wsFormInvalid: "Fill in the name and every step name.",
+  wsFormEmptySteps: "No steps yet. Add the first step.",
+  wsFormNameHint: "This name also appears and is editable in the BPMN diagram.",
+  wsFormTypeHint:
+    "I/O = input or output · AI step = a GenAI step · Human review = a manual check.",
+  wsFormComponentHint: "GAIK component that implements the step (optional).",
+  wsFormExpandStep: "Show step details",
+  wsFormCollapseStep: "Hide step details",
   pocRun: "Run PoC",
   pocRunning: "Running…",
   pocRerun: "Run PoC again",
