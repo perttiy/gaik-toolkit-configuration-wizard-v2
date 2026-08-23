@@ -174,6 +174,7 @@ export type Dict = {
   streamFailed: string;
   chatThinking: string;
   chatBusy: string;
+  chatSessionCost: string;
 
   phases: string[];
   gates: { locked: string; pending: string; approved: string; rejected: string };
@@ -353,6 +354,7 @@ const fi: Dict = {
   chatThinking: "Wizard miettii…",
   chatBusy:
     "Wizard vastaa vielä edelliseen viestiin — hetki, ja lähetä uudelleen.",
+  chatSessionCost: "Tämän session arvioitu kustannus",
 
   phases: [
     "Session start",
@@ -549,6 +551,7 @@ const en: Dict = {
   chatThinking: "The wizard is thinking…",
   chatBusy:
     "The wizard is still finishing the previous reply — please wait a moment and resend.",
+  chatSessionCost: "Estimated cost for this session",
 
   phases: [
     "Session start",

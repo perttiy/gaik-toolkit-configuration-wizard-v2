@@ -230,6 +230,7 @@ export default async function SessionPage({
           sendLabel={t.chatSend}
           streamFailedLabel={t.streamFailed}
           thinkingLabel={t.chatThinking}
+          sessionCostLabel={t.chatSessionCost}
           wide={isGathering}
           hideChatLabel={t.hideChat}
           showChatLabel={t.showChat}

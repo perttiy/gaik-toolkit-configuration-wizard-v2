@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -6,6 +7,15 @@ from fastapi import FastAPI
 
 from wizard_api.routers.sessions import router as sessions_router
 from wizard_api.services import agent_service
+
+# Dev-facing structured-ish logging (S3-10 covers the Next.js side; this is
+# the lightweight Python counterpart — plain stdlib logging, visible in
+# `uvicorn` console output without extra setup). Not the Postgres-backed
+# audit trail from lib/audit.ts; see agent_service's per-turn cost logging.
+logging.basicConfig(
+    level=os.getenv("WIZARD_LOG_LEVEL", "INFO"),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 
 @asynccontextmanager
