@@ -128,6 +128,7 @@ export type Dict = {
   bcReviewers: string;
   bcDomain: string;
   gate1MissingContext: string;
+  gate1Missing: string;
   gatheringCollecting: string;
   gatheringPrompt: string;
   gatheringAdvanceHint: string;
@@ -270,7 +271,8 @@ const fi: Dict = {
   bcReviewers: "Tarkastajat",
   bcDomain: "Toimiala",
   gate1MissingContext:
-    "Nykyprosessi puuttuu — wizard ei ole vielä kerännyt riittävästi. Jatka keskustelua chatissa ennen hyväksyntää.",
+    "Vaatimukset ovat kesken — wizard ei ole vielä kerännyt kaikkea. Jatka keskustelua chatissa ennen hyväksyntää.",
+  gate1Missing: "Puuttuu",
   gatheringCollecting: "Kerätään vaatimuksia",
   gatheringPrompt:
     "Kuvaa liiketoimintaongelmasi chatissa. Wizard kerää tarvittavat vaatimukset ja muotoilee niistä ratkaisun — arkkitehtuuria ja kaavioita ei vielä tässä vaiheessa.",
@@ -434,7 +436,8 @@ const en: Dict = {
   bcReviewers: "Reviewers",
   bcDomain: "Domain",
   gate1MissingContext:
-    "Current process is missing — the wizard hasn't gathered enough yet. Continue the conversation in the chat before approving.",
+    "Requirements are incomplete — the wizard hasn't gathered everything yet. Continue the conversation in the chat before approving.",
+  gate1Missing: "Missing",
   gatheringCollecting: "Collecting requirements",
   gatheringPrompt:
     "Describe your business problem in the chat. The wizard collects the requirements it needs and shapes them into a solution — no architecture or diagrams yet at this stage.",

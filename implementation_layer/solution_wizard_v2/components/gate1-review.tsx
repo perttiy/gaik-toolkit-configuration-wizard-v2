@@ -27,7 +27,13 @@ export function Gate1Review({
   const answered = answers.length;
   const pct = Math.round((answered / items.length) * 100);
   const bc = businessContext ?? null;
-  const missingProcess = !bc?.currentProcess;
+  // Gate 1 is only approvable once the wizard has captured the core business
+  // framing — at minimum the current process and the expected value. Missing
+  // pieces are named in the hint so the SME knows what to keep answering.
+  const missing: string[] = [];
+  if (!bc?.currentProcess) missing.push(t.bcCurrentProcess);
+  if (!bc?.expectedValue.length) missing.push(t.bcExpectedValue);
+  const incomplete = missing.length > 0;
 
   return (
     <div className="mx-auto w-full max-w-2xl py-2">
@@ -182,7 +188,7 @@ export function Gate1Review({
         </div>
       )}
 
-      {missingProcess && (
+      {incomplete && (
         <div
           role="status"
           className="mt-4 flex items-start gap-2 rounded-md border border-warning-border bg-warning-bg px-3 py-2.5 text-sm text-warning-text"
@@ -191,7 +197,12 @@ export function Gate1Review({
             className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-warning-text"
             aria-hidden
           />
-          <span>{t.gate1MissingContext}</span>
+          <span>
+            {t.gate1MissingContext}{" "}
+            <span className="font-semibold">
+              {t.gate1Missing}: {missing.join(", ")}
+            </span>
+          </span>
         </div>
       )}
 
@@ -199,7 +210,7 @@ export function Gate1Review({
         <input type="hidden" name="id" value={sessionId} />
         <button
           type="submit"
-          disabled={missingProcess}
+          disabled={incomplete}
           className="btn-gold w-full justify-center py-3 text-base disabled:cursor-not-allowed disabled:opacity-50"
         >
           {t.gate1Approve}
