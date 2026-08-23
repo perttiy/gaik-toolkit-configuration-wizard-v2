@@ -80,6 +80,28 @@ ESLINT_USE_FLAT_CONFIG=false npm run lint
 
 Koko stack + CI: [`../WIZARD-DEV.md`](../WIZARD-DEV.md). Tietoturva: [`docs/SECURITY.md`](docs/SECURITY.md).
 
+## Logitus
+
+Strukturoitu JSON-logitus (`pino`, `lib/logger.ts`) jokaisella API-reitillä
+`withLogging`-wrapperin kautta (`lib/with-logging.ts`): `traceId`, tapahtuma,
+HTTP-status ja kesto joka pyynnöstä. Auth-, session- ja
+blueprint/BPMN-muutokset kirjautuvat lisäksi audit-tapahtumina
+(`lib/audit.ts`). `traceId` kulkee `x-trace-id`-headerissa middlewaresta
+lähtien ja välittyy myös `wizard_api`-kutsuihin. Ei salasanoja, tokeneita,
+evästeitä tai koko blueprint-/chat-sisältöä lokeissa. Tausta:
+[`docs/2026-08-logging/technical-task-logging.md`](docs/2026-08-logging/technical-task-logging.md).
+
+Lokien lukeminen kehityksessä:
+
+```bash
+npm run dev | npx pino-pretty
+```
+
+Oletustaso on `debug` kehityksessä ja `info` tuotannossa (`lib/logger.ts`);
+ohita `LOG_LEVEL`-ympäristömuuttujalla tarvittaessa (`warn`/`error` näyttää
+vähemmän). Ilman `pino-pretty`-putkitusta lokit tulostuvat yhtenä
+JSON-rivinä per tapahtuma (helppo grepata `traceId`:llä).
+
 ## Seuraavat askeleet
 
 - ~~Korvaa `mock-sessions.ts` oikealla persistenssillä~~ → `WIZARD_API_URL` + `lib/sessions.ts` (Sprint 1)

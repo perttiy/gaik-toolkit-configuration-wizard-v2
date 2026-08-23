@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Dict } from "@/lib/i18n";
+import type { WizardSession } from "@/lib/mock-sessions";
 
 const sessionsMock = vi.hoisted(() => ({ recordRequirementAnswer: vi.fn() }));
 vi.mock("@/lib/sessions", () => sessionsMock);
@@ -10,15 +12,15 @@ const t = {
   phases: ["Session start", "Requirements gathering", "Specification", "Gate 1"],
   chatMockReplyPre: "Thanks for your message. I've logged it under step ",
   chatMockReplyPost: ". (Mock reply.)",
-} as any;
+} as unknown as Dict;
 
-function session(overrides: Partial<any> = {}) {
+function session(overrides: Partial<WizardSession> = {}): WizardSession {
   return {
     id: "s1",
     step: 1,
     requirements: { points: REQUIREMENT_POINTS, answers: [] },
     ...overrides,
-  } as any;
+  } as WizardSession;
 }
 
 beforeEach(() => {

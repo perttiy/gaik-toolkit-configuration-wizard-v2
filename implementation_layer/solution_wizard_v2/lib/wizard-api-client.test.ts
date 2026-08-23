@@ -176,26 +176,26 @@ describe("wizardFetch-backed API helpers", () => {
 describe("openAgentChatStream", () => {
   it("POSTs the message as an SSE request and includes locale when given", async () => {
     vi.stubEnv("WIZARD_API_URL", "http://api.test");
-    const fetchMock = vi.fn(async () => new Response("", { status: 200 }));
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response("", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
     await openAgentChatStream("s1", "hello", "en");
 
-    const [url, init] = fetchMock.mock.calls[0];
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit & { headers: Record<string, string> }];
     expect(url).toBe("http://api.test/sessions/s1/chat");
     expect(init.method).toBe("POST");
     expect(init.headers.Accept).toBe("text/event-stream");
-    expect(JSON.parse(init.body)).toEqual({ message: "hello", locale: "en" });
+    expect(JSON.parse(init.body as string)).toEqual({ message: "hello", locale: "en" });
   });
 
   it("omits locale from the body when not given", async () => {
     vi.stubEnv("WIZARD_API_URL", "http://api.test");
-    const fetchMock = vi.fn(async () => new Response("", { status: 200 }));
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response("", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
     await openAgentChatStream("s1", "hello");
 
-    const [, init] = fetchMock.mock.calls[0];
-    expect(JSON.parse(init.body)).toEqual({ message: "hello" });
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({ message: "hello" });
   });
 });

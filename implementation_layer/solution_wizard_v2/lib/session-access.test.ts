@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { WizardSession } from "@/lib/mock-sessions";
 
 const currentUserMock = vi.hoisted(() => ({ getCurrentUser: vi.fn() }));
 vi.mock("@/lib/current-user", () => currentUserMock);
@@ -8,7 +9,7 @@ vi.mock("@/lib/sessions", () => sessionsMock);
 
 import { getSessionForUser, requireOwnedSession } from "@/lib/session-access";
 
-const session = { id: "s1", userId: "owner@gaik.local" } as any;
+const session = { id: "s1", userId: "owner@gaik.local" } as unknown as WizardSession;
 
 beforeEach(() => {
   vi.clearAllMocks();
