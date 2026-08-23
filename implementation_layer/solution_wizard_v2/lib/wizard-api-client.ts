@@ -98,6 +98,15 @@ export type ApiSessionDetail = {
       description?: string;
     }>;
   };
+  business_context?: {
+    current_process: string;
+    pain_points: string[];
+    intended_users: string[];
+    reviewers: string[];
+    expected_value: string[];
+    knowledge_processes: string[];
+    domain: string;
+  } | null;
   messages: Array<{
     id: string;
     role: string;

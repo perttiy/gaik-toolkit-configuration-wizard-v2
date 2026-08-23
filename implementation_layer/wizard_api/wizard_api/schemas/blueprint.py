@@ -24,6 +24,22 @@ class BlueprintContent(BaseModel):
     integration_targets: list[str] = Field(default_factory=list)
 
 
+class BusinessContext(BaseModel):
+    """Business-facing fields the wizard agent gathers into the V1 draft
+    blueprint (``use_case.blueprint.json``) but that the reduced V2 blueprint
+    does not carry. Surfaced read-only at Gate 1 so the SME sees the gathered
+    business framing (#19 current process, #20 knowledge processes, #21
+    expected value) — not just JSON/BPMN internals."""
+
+    current_process: str = ""
+    pain_points: list[str] = Field(default_factory=list)
+    intended_users: list[str] = Field(default_factory=list)
+    reviewers: list[str] = Field(default_factory=list)
+    expected_value: list[str] = Field(default_factory=list)
+    knowledge_processes: list[str] = Field(default_factory=list)
+    domain: str = ""
+
+
 class SessionDetailResponse(BaseModel):
     """Full session state for UI resume (S1-2 + metadata)."""
 
@@ -40,6 +56,7 @@ class SessionDetailResponse(BaseModel):
     active_version: int
     versions: list[BlueprintVersionSummary]
     blueprint: BlueprintContent
+    business_context: BusinessContext | None = None
     messages: list[dict]
     created_at: datetime
     updated_at: datetime

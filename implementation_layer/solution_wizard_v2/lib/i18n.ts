@@ -119,6 +119,15 @@ export type Dict = {
   gate1ChecklistTitle: string;
   gate1Answered: string;
   gate1Approve: string;
+  bcTitle: string;
+  bcCurrentProcess: string;
+  bcExpectedValue: string;
+  bcKnowledgeProcesses: string;
+  bcPainPoints: string;
+  bcUsers: string;
+  bcReviewers: string;
+  bcDomain: string;
+  gate1MissingContext: string;
   gatheringCollecting: string;
   gatheringPrompt: string;
   gatheringAdvanceHint: string;
@@ -252,6 +261,16 @@ const fi: Dict = {
   gate1ChecklistTitle: "Kerätyt vaatimukset",
   gate1Answered: "kohtaa vastattu",
   gate1Approve: "Hyväksy vaatimukset & Jatka →",
+  bcTitle: "Liiketoimintakonteksti",
+  bcCurrentProcess: "Nykyprosessi",
+  bcExpectedValue: "Odotettu arvo",
+  bcKnowledgeProcesses: "Tietoprosessit",
+  bcPainPoints: "Kipupisteet",
+  bcUsers: "Käyttäjät",
+  bcReviewers: "Tarkastajat",
+  bcDomain: "Toimiala",
+  gate1MissingContext:
+    "Nykyprosessi puuttuu — wizard ei ole vielä kerännyt riittävästi. Jatka keskustelua chatissa ennen hyväksyntää.",
   gatheringCollecting: "Kerätään vaatimuksia",
   gatheringPrompt:
     "Kuvaa liiketoimintaongelmasi chatissa. Wizard kerää tarvittavat vaatimukset ja muotoilee niistä ratkaisun — arkkitehtuuria ja kaavioita ei vielä tässä vaiheessa.",
@@ -406,6 +425,16 @@ const en: Dict = {
   gate1ChecklistTitle: "Gathered requirements",
   gate1Answered: "points answered",
   gate1Approve: "Approve requirements & Continue →",
+  bcTitle: "Business context",
+  bcCurrentProcess: "Current process",
+  bcExpectedValue: "Expected value",
+  bcKnowledgeProcesses: "Knowledge processes",
+  bcPainPoints: "Pain points",
+  bcUsers: "Users",
+  bcReviewers: "Reviewers",
+  bcDomain: "Domain",
+  gate1MissingContext:
+    "Current process is missing — the wizard hasn't gathered enough yet. Continue the conversation in the chat before approving.",
   gatheringCollecting: "Collecting requirements",
   gatheringPrompt:
     "Describe your business problem in the chat. The wizard collects the requirements it needs and shapes them into a solution — no architecture or diagrams yet at this stage.",
