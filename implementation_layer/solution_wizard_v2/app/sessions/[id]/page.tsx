@@ -138,6 +138,7 @@ export default async function SessionPage({
                 points={points}
                 answers={answers}
                 businessContext={session.businessContext}
+                assumptions={session.assumptions}
                 t={t}
               />
             ) : isSpec ? (

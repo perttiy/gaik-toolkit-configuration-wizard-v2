@@ -34,6 +34,7 @@ export {
   isGateStep,
 } from "@/lib/mock-sessions";
 export type {
+  Assumption,
   BusinessContext,
   Blueprint,
   BlueprintStep,
@@ -90,6 +91,12 @@ function detailToWizardSession(detail: ApiSessionDetail): WizardSession {
           domain: detail.business_context.domain ?? "",
         }
       : null,
+    assumptions: (detail.assumptions ?? []).map((a) => ({
+      id: a.id,
+      text: a.text,
+      status: a.status,
+      impact: a.impact,
+    })),
   };
 }
 

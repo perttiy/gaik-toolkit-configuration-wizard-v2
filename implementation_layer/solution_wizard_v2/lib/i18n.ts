@@ -129,6 +129,12 @@ export type Dict = {
   bcDomain: string;
   gate1MissingContext: string;
   gate1Missing: string;
+  asmTitle: string;
+  asmConfirmedCount: string;
+  asmIntro: string;
+  asmImpact: string;
+  asmUnconfirmed: string;
+  asmConfirmed: string;
   gatheringCollecting: string;
   gatheringPrompt: string;
   gatheringAdvanceHint: string;
@@ -273,6 +279,13 @@ const fi: Dict = {
   gate1MissingContext:
     "Vaatimukset ovat kesken — wizard ei ole vielä kerännyt kaikkea. Jatka keskustelua chatissa ennen hyväksyntää.",
   gate1Missing: "Puuttuu",
+  asmTitle: "Avoimet oletukset",
+  asmConfirmedCount: "kuitattu",
+  asmIntro:
+    "Wizard kirjasi nämä, koska tietoa puuttui. Tarkista ne ennen hyväksyntää.",
+  asmImpact: "Vaikutus",
+  asmUnconfirmed: "Vahvistamaton",
+  asmConfirmed: "Vahvistettu",
   gatheringCollecting: "Kerätään vaatimuksia",
   gatheringPrompt:
     "Kuvaa liiketoimintaongelmasi chatissa. Wizard kerää tarvittavat vaatimukset ja muotoilee niistä ratkaisun — arkkitehtuuria ja kaavioita ei vielä tässä vaiheessa.",
@@ -438,6 +451,13 @@ const en: Dict = {
   gate1MissingContext:
     "Requirements are incomplete — the wizard hasn't gathered everything yet. Continue the conversation in the chat before approving.",
   gate1Missing: "Missing",
+  asmTitle: "Open assumptions",
+  asmConfirmedCount: "confirmed",
+  asmIntro:
+    "The wizard recorded these because information was missing. Review them before approving.",
+  asmImpact: "Impact",
+  asmUnconfirmed: "Unconfirmed",
+  asmConfirmed: "Confirmed",
   gatheringCollecting: "Collecting requirements",
   gatheringPrompt:
     "Describe your business problem in the chat. The wizard collects the requirements it needs and shapes them into a solution — no architecture or diagrams yet at this stage.",

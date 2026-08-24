@@ -8,7 +8,11 @@ from sqlalchemy.orm import Session
 
 from wizard_api.config import build_session_output_dir
 from wizard_api.models import BlueprintVersion, WizardSession
-from wizard_api.schemas.blueprint import BusinessContext, SessionDetailResponse
+from wizard_api.schemas.blueprint import (
+    AssumptionItem,
+    BusinessContext,
+    SessionDetailResponse,
+)
 from wizard_api.schemas.session import SessionCreate, SessionUpdate
 from wizard_api.services import blueprint_service
 from wizard_api.session_state import MAX_STEP, merge_gate_statuses
@@ -90,6 +94,36 @@ def _read_business_context(output_dir: str) -> BusinessContext | None:
     return ctx
 
 
+def _read_assumptions(output_dir: str) -> list[AssumptionItem]:
+    """Read the draft blueprint's ``assumptions[]`` if it has been written.
+    Best-effort — returns an empty list when the file is missing/unreadable."""
+    path = os.path.join(output_dir or "", "use_case.blueprint.json")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return []
+    raw = data.get("assumptions") if isinstance(data, dict) else None
+    if not isinstance(raw, list):
+        return []
+    out: list[AssumptionItem] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        text = item.get("text")
+        if not isinstance(text, str) or not text.strip():
+            continue
+        out.append(
+            AssumptionItem(
+                id=str(item.get("id") or ""),
+                text=text.strip(),
+                status=str(item.get("status") or "unconfirmed"),
+                impact=str(item.get("impact") or ""),
+            )
+        )
+    return out
+
+
 def session_detail(
     db: Session,
     session: WizardSession,
@@ -124,6 +158,7 @@ def session_detail(
         ],
         blueprint=blueprint,
         business_context=_read_business_context(session.output_dir),
+        assumptions=_read_assumptions(session.output_dir),
         messages=messages,
         created_at=session.created_at,
         updated_at=session.updated_at,

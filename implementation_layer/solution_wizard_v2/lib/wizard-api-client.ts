@@ -107,6 +107,12 @@ export type ApiSessionDetail = {
     knowledge_processes: string[];
     domain: string;
   } | null;
+  assumptions?: Array<{
+    id: string;
+    text: string;
+    status: string;
+    impact: string;
+  }>;
   messages: Array<{
     id: string;
     role: string;

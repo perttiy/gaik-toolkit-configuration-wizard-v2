@@ -40,6 +40,17 @@ class BusinessContext(BaseModel):
     domain: str = ""
 
 
+class AssumptionItem(BaseModel):
+    """One entry from the draft blueprint's ``assumptions[]`` — a gap the wizard
+    filled in because information was missing. Surfaced at Gate 1 so the SME can
+    review (and, later, confirm) them instead of scanning chat markdown."""
+
+    id: str = ""
+    text: str = ""
+    status: str = "unconfirmed"
+    impact: str = ""
+
+
 class SessionDetailResponse(BaseModel):
     """Full session state for UI resume (S1-2 + metadata)."""
 
@@ -57,6 +68,7 @@ class SessionDetailResponse(BaseModel):
     versions: list[BlueprintVersionSummary]
     blueprint: BlueprintContent
     business_context: BusinessContext | None = None
+    assumptions: list[AssumptionItem] = Field(default_factory=list)
     messages: list[dict]
     created_at: datetime
     updated_at: datetime

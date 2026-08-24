@@ -1,5 +1,5 @@
 import type { Dict } from "@/lib/i18n";
-import type { BusinessContext } from "@/lib/sessions";
+import type { Assumption, BusinessContext } from "@/lib/sessions";
 import { approve, reject, requestChanges } from "@/app/sessions/[id]/actions";
 
 // Focus view for Gate 1: a summary of the requirements gathered in steps 1–3
@@ -15,14 +15,17 @@ export function Gate1Review({
   points,
   answers,
   businessContext,
+  assumptions = [],
   t,
 }: {
   sessionId: string;
   points: string[];
   answers: string[];
   businessContext?: BusinessContext | null;
+  assumptions?: Assumption[];
   t: Dict;
 }) {
+  const confirmedCount = assumptions.filter((a) => a.status === "confirmed").length;
   const items = points;
   const answered = answers.length;
   const pct = Math.round((answered / items.length) * 100);
@@ -185,6 +188,59 @@ export function Gate1Review({
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {assumptions.length > 0 && (
+        <div className="mt-4 overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
+          <div className="flex items-center justify-between border-b border-border px-4 py-3">
+            <span className="text-sm font-semibold text-text">{t.asmTitle}</span>
+            <span className="text-xs font-semibold text-brand-text">
+              {confirmedCount} / {assumptions.length} {t.asmConfirmedCount}
+            </span>
+          </div>
+          <p className="px-4 pt-2.5 text-xs text-text-muted">{t.asmIntro}</p>
+          <ul className="divide-y divide-border">
+            {assumptions.map((a, i) => {
+              const done = a.status === "confirmed";
+              return (
+                <li
+                  key={a.id || i}
+                  className="flex items-start gap-2.5 px-4 py-2.5"
+                >
+                  <span
+                    className={`mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+                      done
+                        ? "bg-brand-soft text-brand-text"
+                        : "bg-surface-muted text-text-muted"
+                    }`}
+                    aria-hidden
+                  >
+                    {i + 1}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm text-text">{a.text}</span>
+                    <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      {a.impact && (
+                        <span className="rounded-full bg-surface-muted px-2 py-0.5 text-[11px] font-medium text-text-muted">
+                          {t.asmImpact}: {a.impact}
+                        </span>
+                      )}
+                      <span
+                        className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                          done
+                            ? "border-brand-soft-border bg-brand-soft text-brand-text"
+                            : "border-warning-border bg-warning-bg text-warning-text"
+                        }`}
+                      >
+                        {done ? t.asmConfirmed : t.asmUnconfirmed}
+                      </span>
+                    </span>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
 
