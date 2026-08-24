@@ -176,8 +176,30 @@ def _artifact_step_map(v2_blueprint: dict[str, Any]) -> dict[str, str]:
     return mapping
 
 
+def _sequence_flows(root: ET.Element) -> list[dict[str, str]]:
+    flows: list[dict[str, str]] = []
+    for el in root.iter():
+        if _local(el.tag) != "sequenceFlow":
+            continue
+        fid = el.get("id") or ""
+        src = el.get("sourceRef") or ""
+        tgt = el.get("targetRef") or ""
+        if not src or not tgt:
+            continue
+        flows.append(
+            {
+                "id": fid,
+                "sourceRef": src,
+                "targetRef": tgt,
+                "name": (el.get("name") or "").strip(),
+            }
+        )
+    return flows
+
+
 def _sync_gateways(root: ET.Element) -> list[dict[str, Any]]:
-    """Snapshot exclusive/parallel gateways from the canvas (#48)."""
+    """Snapshot exclusive/parallel gateways + outgoing labeled flows (#48)."""
+    flows = _sequence_flows(root)
     out: list[dict[str, Any]] = []
     for el in root.iter():
         local = _local(el.tag)
@@ -186,35 +208,35 @@ def _sync_gateways(root: ET.Element) -> list[dict[str, Any]]:
         gid = el.get("id") or ""
         if not gid:
             continue
+        outgoing = [
+            {
+                "id": f["id"],
+                "targetRef": f["targetRef"],
+                "name": f["name"],
+            }
+            for f in flows
+            if f["sourceRef"] == gid
+        ]
         out.append(
             {
                 "id": gid,
                 "name": (el.get("name") or "").strip(),
                 "type": "exclusive" if local == "exclusiveGateway" else "parallel",
+                "outgoing": outgoing,
             }
         )
     return out
 
 
-def sync_v2_blueprint_from_bpmn_xml(
+def _extract_v2_from_bpmn_xml(
     v2_blueprint: dict[str, Any],
     bpmn_xml: str,
 ) -> dict[str, Any]:
-    """Apply canvas edits to V2 blueprint steps.
-
-    Supported:
-    - rename tasks (strips ``[CODE]`` / legacy caption suffixes)
-    - reorder steps from sequence-flow topology
-    - add new tasks created on the canvas
-    - remove steps whose activities were deleted from the canvas
-    - sync ``bpmn:documentation`` → step.description when present
-    - record data-object label edits under ``v2_blueprint[\"data_objects\"]``
-    - snapshot gateway id/name/type under ``v2_blueprint[\"gateways\"]``
-    """
+    """Parse canvas XML into a candidate V2 blueprint (before change-op apply)."""
     root = ET.fromstring(bpmn_xml)
     processes = [el for el in root.iter() if _local(el.tag) == "process"]
     if not processes:
-        return v2_blueprint
+        return dict(v2_blueprint)
 
     process = processes[0]
     task_by_id: dict[str, ET.Element] = {}
@@ -224,7 +246,7 @@ def sync_v2_blueprint_from_bpmn_xml(
 
     ordered_ids = _ordered_task_ids(root)
     if not ordered_ids:
-        return v2_blueprint
+        return dict(v2_blueprint)
 
     old_steps = list(v2_blueprint.get("steps") or [])
     old_by_id = {str(s.get("id")): s for s in old_steps if s.get("id")}
@@ -322,4 +344,44 @@ def sync_v2_blueprint_from_bpmn_xml(
             **data_labels,
         }
 
+    return updated
+
+
+def sync_v2_blueprint_from_bpmn_xml(
+    v2_blueprint: dict[str, Any],
+    bpmn_xml: str,
+    *,
+    return_ops: bool = False,
+) -> dict[str, Any] | tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Apply canvas edits to V2 blueprint via structured change-ops (#48 / #68).
+
+    Supported:
+    - rename tasks (strips ``[CODE]`` / legacy caption suffixes)
+    - reorder steps from sequence-flow topology
+    - add new tasks created on the canvas
+    - remove steps whose activities were deleted from the canvas
+    - sync ``bpmn:documentation`` → step.description when present
+    - record data-object label edits under ``v2_blueprint[\"data_objects\"]``
+    - snapshot gateway id/name/type/outgoing under ``v2_blueprint[\"gateways\"]``
+
+    Canvas XML is parsed to a target V2 state, then applied as change-ops so the
+    JSON path remains the source of truth (PO feedback / MIC009).
+    """
+    from solution_wizard.blueprint_ops import apply_change_ops, derive_change_ops
+
+    extracted = _extract_v2_from_bpmn_xml(v2_blueprint, bpmn_xml)
+    # Prefer fine-grained ops when possible; fall back to replace_steps.
+    ops = derive_change_ops(v2_blueprint, extracted)
+    if not ops and extracted.get("steps") != list(v2_blueprint.get("steps") or []):
+        ops = [{"op": "replace_steps", "steps": extracted["steps"]}]
+    updated = apply_change_ops(v2_blueprint, ops) if ops else dict(v2_blueprint)
+    # Topology snapshots always come from the canvas extract.
+    if "gateways" in extracted:
+        updated["gateways"] = extracted["gateways"]
+    elif "gateways" not in updated and v2_blueprint.get("gateways"):
+        updated["gateways"] = v2_blueprint["gateways"]
+    if "data_objects" in extracted:
+        updated["data_objects"] = extracted["data_objects"]
+    if return_ops:
+        return updated, ops
     return updated

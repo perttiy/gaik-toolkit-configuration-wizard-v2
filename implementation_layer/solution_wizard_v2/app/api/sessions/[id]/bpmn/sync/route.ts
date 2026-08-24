@@ -66,7 +66,7 @@ export const POST = withLogging(
 
     try {
       const result = await syncSessionBpmn(id, owned.session.blueprint, body.xml);
-      await saveBlueprintAfterBpmnSync(id, result.blueprint);
+      const saved = await saveBlueprintAfterBpmnSync(id, result.blueprint);
       audit("bpmn.sync", {
         actor: owned.user.email,
         resource: { type: "session", id },
@@ -76,6 +76,11 @@ export const POST = withLogging(
         blueprint: result.blueprint,
         xml: result.xml,
         lint,
+        // Real, DB-persisted version — not a client-side guess. Undo (S3-5/#67)
+        // restores by this number, so it must reflect what was actually saved,
+        // not just increment locally (mock mode has no `saved`, hence `?.`).
+        activeVersion: saved?.activeVersion,
+        versions: saved?.versions,
       });
     } catch (err) {
       logger.error({ traceId: getTraceId(), err, sessionId: id }, "bpmn.sync failed");

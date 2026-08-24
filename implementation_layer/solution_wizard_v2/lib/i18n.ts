@@ -72,6 +72,12 @@ export type Dict = {
   wsBpmnSaving: string;
   wsBpmnSaveError: string;
   wsBpmnSaved: string;
+  wsBpmnUndo: string;
+  wsBpmnUndoing: string;
+  wsBpmnUndone: string;
+  wsBpmnUndoError: string;
+  wsBpmnUndoHint: string;
+  wsBpmnUndoDisabled: string;
   wsBpmnLintBlocked: string;
   wsBpmnLintWarnings: string;
   wsBpmnDialogTitle: string;
@@ -255,6 +261,12 @@ const fi: Dict = {
   wsBpmnSaving: "Tallennetaan…",
   wsBpmnSaveError: "Tallennus epäonnistui",
   wsBpmnSaved: "Tallennettu",
+  wsBpmnUndo: "Kumoa",
+  wsBpmnUndoing: "Kumotaan…",
+  wsBpmnUndone: "Kumottu",
+  wsBpmnUndoError: "Kumoaminen epäonnistui",
+  wsBpmnUndoHint: "Palauta versio {version}",
+  wsBpmnUndoDisabled: "Ei aiempaa versiota kumottavaksi",
   wsBpmnLintBlocked: "BPMN-validointi esti tallennuksen (bpmnlint)",
   wsBpmnLintWarnings: "BPMN-varoitukset",
   wsBpmnDialogTitle: "Visuaalinen työnkulku (BPMN)",
@@ -471,6 +483,12 @@ const en: Dict = {
   wsBpmnSaving: "Saving…",
   wsBpmnSaveError: "Save failed",
   wsBpmnSaved: "Saved",
+  wsBpmnUndo: "Undo",
+  wsBpmnUndoing: "Undoing…",
+  wsBpmnUndone: "Undone",
+  wsBpmnUndoError: "Undo failed",
+  wsBpmnUndoHint: "Restore version {version}",
+  wsBpmnUndoDisabled: "No earlier version to undo to",
   wsBpmnLintBlocked: "BPMN validation blocked save (bpmnlint)",
   wsBpmnLintWarnings: "BPMN warnings",
   wsBpmnDialogTitle: "Visual workflow (BPMN)",

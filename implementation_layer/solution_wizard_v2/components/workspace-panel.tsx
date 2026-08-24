@@ -74,6 +74,8 @@ function WorkflowFlowTab({
   sessionTitle,
   wizardStep,
   blueprint,
+  activeVersion,
+  onActiveVersionChange,
   bpmnRefreshKey,
   onBlueprintChange,
   t,
@@ -83,6 +85,8 @@ function WorkflowFlowTab({
   sessionTitle: string;
   wizardStep: number;
   blueprint: Blueprint;
+  activeVersion?: number;
+  onActiveVersionChange: (version: number) => void;
   bpmnRefreshKey: number;
   onBlueprintChange: (blueprint: Blueprint) => void;
   t: Dict;
@@ -145,6 +149,7 @@ function WorkflowFlowTab({
         <BpmnDiagramPanel
           sessionId={sessionId}
           xml={bpmnXml}
+          activeVersion={activeVersion}
           ariaLabel={t.wsTabFlow}
           loadErrorLabel={t.wsBpmnError}
           editableLabel={t.wsBpmnEditable}
@@ -154,6 +159,12 @@ function WorkflowFlowTab({
           savingLabel={t.wsBpmnSaving}
           saveErrorLabel={t.wsBpmnSaveError}
           savedLabel={t.wsBpmnSaved}
+          undoLabel={t.wsBpmnUndo}
+          undoingLabel={t.wsBpmnUndoing}
+          undoneLabel={t.wsBpmnUndone}
+          undoErrorLabel={t.wsBpmnUndoError}
+          undoHintLabel={t.wsBpmnUndoHint}
+          undoDisabledLabel={t.wsBpmnUndoDisabled}
           activeBlueprintLabel={t.activeBlueprint}
           lintBlockedLabel={t.wsBpmnLintBlocked}
           lintWarningsLabel={t.wsBpmnLintWarnings}
@@ -180,9 +191,12 @@ function WorkflowFlowTab({
               ),
             });
           }}
-          onSynced={({ blueprint: synced, xml }) => {
+          onSynced={({ blueprint: synced, xml, meta }) => {
             onBlueprintChange(synced);
             setBpmnXml(xml);
+            if (meta?.activeVersion !== undefined) {
+              onActiveVersionChange(meta.activeVersion);
+            }
           }}
         />
       )}
@@ -211,16 +225,20 @@ export function WorkspacePanel({
   sessionTitle,
   wizardStep,
   blueprint: initialBlueprint,
+  activeVersion: initialActiveVersion,
   t,
 }: {
   sessionId: string;
   sessionTitle: string;
   wizardStep: number;
   blueprint: Blueprint;
+  /** Undefined in mock mode (no persisted version history there) — hides the Undo control. */
+  activeVersion?: number;
   t: Dict;
 }) {
   const [tab, setTab] = useState<Tab>("flow");
   const [blueprint, setBlueprint] = useState(initialBlueprint);
+  const [activeVersion, setActiveVersion] = useState(initialActiveVersion);
   const [bpmnRefreshKey, setBpmnRefreshKey] = useState(0);
   const [logs, setLogs] = useState<string[]>([]);
   const [pocStatus, setPocStatus] = useState<PocStatus>("idle");
@@ -316,6 +334,8 @@ export function WorkspacePanel({
                   sessionTitle={sessionTitle}
                   wizardStep={wizardStep}
                   blueprint={blueprint}
+                  activeVersion={activeVersion}
+                  onActiveVersionChange={setActiveVersion}
                   bpmnRefreshKey={bpmnRefreshKey}
                   onBlueprintChange={setBlueprint}
                   t={t}
@@ -327,9 +347,12 @@ export function WorkspacePanel({
               <BlueprintJsonEditor
                 sessionId={sessionId}
                 blueprint={blueprint}
-                onSaved={(saved) => {
+                onSaved={(saved, savedActiveVersion) => {
                   setBlueprint(saved);
                   setBpmnRefreshKey((k) => k + 1);
+                  if (savedActiveVersion !== undefined) {
+                    setActiveVersion(savedActiveVersion);
+                  }
                 }}
                 t={t}
               />

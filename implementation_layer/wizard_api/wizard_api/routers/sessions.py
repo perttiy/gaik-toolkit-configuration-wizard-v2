@@ -44,6 +44,11 @@ class BpmnSyncRequest(BaseModel):
     xml: str = Field(min_length=1)
 
 
+class BlueprintOpsRequest(BaseModel):
+    ops: list[dict] = Field(min_length=1)
+    note: str = Field(default="Blueprint change-ops", max_length=512)
+
+
 @router.patch("/{session_id}/blueprint", response_model=SessionDetailResponse)
 def patch_blueprint(
     session_id: uuid.UUID,
@@ -249,6 +254,49 @@ def create_blueprint_version(
         note=payload.note or f"Vaihe {session.step}",
         content=payload.content,
     )
+    db.commit()
+    db.refresh(session)
+    return session_service.session_detail(db, session)
+
+
+@router.post("/{session_id}/blueprint/ops", response_model=SessionDetailResponse)
+def apply_blueprint_ops(
+    session_id: uuid.UUID,
+    payload: BlueprintOpsRequest,
+    db: Session = Depends(get_db),
+) -> SessionDetailResponse:
+    """S3-4/#66 — structured change-ops so canvas edits and (later)
+    natural-language tools share the same operations, instead of each
+    patching raw blueprint fields independently."""
+    session = session_service.get_session(db, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    try:
+        blueprint_service.apply_ops(db, session, ops=payload.ops, note=payload.note)
+    except blueprint_service.BlueprintOpsError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    db.commit()
+    db.refresh(session)
+    return session_service.session_detail(db, session)
+
+
+@router.post("/{session_id}/versions/{version}/restore", response_model=SessionDetailResponse)
+def restore_blueprint_version(
+    session_id: uuid.UUID,
+    version: int,
+    db: Session = Depends(get_db),
+) -> SessionDetailResponse:
+    """S3-5/#67 — undo/restore: copy an earlier version's content forward as
+    a new version. Session-scoped by construction (get_version filters on
+    this session_id), so it's structurally impossible to restore a version
+    belonging to a different session/user."""
+    session = session_service.get_session(db, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    try:
+        blueprint_service.restore_version(db, session, version=version)
+    except blueprint_service.BlueprintOpsError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     db.commit()
     db.refresh(session)
     return session_service.session_detail(db, session)
