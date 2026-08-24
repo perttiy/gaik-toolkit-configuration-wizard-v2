@@ -56,6 +56,13 @@ export const PATCH = withLogging(
       outcome: "success",
       stepCount: updated.blueprint.steps.length,
     });
-    return Response.json({ blueprint: updated.blueprint });
+    return Response.json({
+      blueprint: updated.blueprint,
+      // Real, DB-persisted version — S3-5/#67 undo targets this number, so
+      // every save path (JSON tab, BPMN canvas, change-ops) must report it
+      // consistently, not just the BPMN tab's own local counter.
+      activeVersion: updated.activeVersion,
+      versions: updated.versions,
+    });
   },
 );

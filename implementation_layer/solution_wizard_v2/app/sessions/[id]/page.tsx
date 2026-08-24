@@ -18,6 +18,7 @@ import {
   isGateStep,
 } from "@/lib/sessions";
 import { shouldCollapseChatByDefault } from "@/lib/bpmn-spike";
+import { wizardApiEnabled } from "@/lib/wizard-api-client";
 
 export default async function SessionPage({
   params,
@@ -168,6 +169,7 @@ export default async function SessionPage({
                   sessionTitle={session.title}
                   wizardStep={session.step}
                   blueprint={session.blueprint}
+                  activeVersion={wizardApiEnabled() ? session.activeVersion : undefined}
                   t={t}
                 />
               </>
