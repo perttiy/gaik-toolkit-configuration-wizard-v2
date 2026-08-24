@@ -1,8 +1,10 @@
 import uuid
 from datetime import datetime
+from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from wizard_api.config import get_session_output_root
 from wizard_api.session_state import MAX_STEP, MIN_STEP, validate_gate_statuses, validate_step
 
 
@@ -20,6 +22,21 @@ class SessionCreate(BaseModel):
         if ".." in value or "/" in value or "\\" in value:
             raise ValueError("user_id must not contain path segments")
         return value
+
+    @field_validator("output_dir")
+    @classmethod
+    def output_dir_confined(cls, value: str | None) -> str | None:
+        """Reject any output_dir that resolves outside the configured session
+        output root — this becomes the wizard agent's add_dirs scope, so a path
+        outside the root would hand file access to an attacker-chosen location."""
+        if value is None:
+            return value
+        root = get_session_output_root().resolve()
+        candidate = Path(value)
+        resolved = candidate.resolve() if candidate.is_absolute() else (root / candidate).resolve()
+        if resolved != root and root not in resolved.parents:
+            raise ValueError("output_dir must be within the configured session output root")
+        return str(resolved)
 
 
 class SessionUpdate(BaseModel):

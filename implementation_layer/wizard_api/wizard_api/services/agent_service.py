@@ -24,6 +24,7 @@ import asyncio
 import json
 import logging
 import os
+import shlex
 import time
 from collections.abc import AsyncGenerator
 from pathlib import Path
@@ -35,6 +36,8 @@ try:
         AssistantMessage,
         ClaudeAgentOptions,
         ClaudeSDKClient,
+        PermissionResultAllow,
+        PermissionResultDeny,
         ResultMessage,
         TextBlock,
     )
@@ -43,6 +46,7 @@ try:
 except ImportError:  # pragma: no cover - exercised only where the SDK is absent
     _SDK_AVAILABLE = False
     AssistantMessage = ClaudeAgentOptions = ClaudeSDKClient = ResultMessage = TextBlock = None  # type: ignore
+    PermissionResultAllow = PermissionResultDeny = None  # type: ignore
 
 # StreamEvent (token-level partials) lives in the types submodule on some SDK
 # versions, the top level on others. Optional.
@@ -344,14 +348,56 @@ async def _drain_silent(
             return
 
 
+# The only shell commands the wizard agent's own SKILL.md instructs it to run —
+# every phase invokes one of these as `python scripts/<name>.py [...args]` from
+# wizard_dir. Anything else requested via the Bash tool is denied.
+_ALLOWED_SCRIPTS = {
+    "check_requirements.py",
+    "validate_blueprint.py",
+    "generate_mermaid.py",
+    "generate_bpmn.py",
+    "generate_schema.py",
+    "scaffold_poc.py",
+    "generate_docs.py",
+    "promote_template.py",
+    "run_wizard.py",
+}
+
+
+async def _can_use_tool(tool_name, tool_input, _context):
+    """Scope the Bash tool to the wizard's own scripts/*.py helpers; allow the
+    rest (Read/Grep/Glob/Write/Edit are already confined to cwd/add_dirs by the
+    SDK itself, so only Bash needs a per-call check here)."""
+    if tool_name != "Bash":
+        return PermissionResultAllow()
+    command = str(tool_input.get("command", ""))
+    try:
+        parts = shlex.split(command)
+    except ValueError:
+        return PermissionResultDeny(message="Could not parse the requested command.")
+    if len(parts) >= 2 and parts[0] in ("python", "python3") and parts[1].startswith("scripts/"):
+        if parts[1].rsplit("/", 1)[-1] in _ALLOWED_SCRIPTS:
+            return PermissionResultAllow()
+    return PermissionResultDeny(
+        message="Only the solution_wizard scripts/*.py helpers may be run via Bash."
+    )
+
+
 def _build_options(wizard_dir: Path, output_dir: Path):
     return ClaudeAgentOptions(
         cwd=str(wizard_dir),
         add_dirs=[str(output_dir)],
         env=_agent_env(),
         model=_model(),
-        allowed_tools=["Read", "Grep", "Glob", "Write", "Edit", "Bash"],
-        permission_mode="bypassPermissions",
+        # Bash is deliberately left out of allowed_tools: naming a whole tool
+        # there auto-approves every call before can_use_tool ever runs. Leaving
+        # it out means Bash stays available but always falls through to the
+        # callback below, which is what actually enforces the scripts/*.py
+        # allowlist. Read/Grep/Glob/Write/Edit are safe to pre-approve here —
+        # they're already confined to cwd/add_dirs by the SDK itself.
+        allowed_tools=["Read", "Grep", "Glob", "Write", "Edit"],
+        permission_mode="default",
+        can_use_tool=_can_use_tool,
         setting_sources=[],
         include_partial_messages=True,
     )
