@@ -1,6 +1,38 @@
-import type { Blueprint, BlueprintStepType } from "@/lib/mock-sessions";
+import type { Blueprint, BlueprintStepType, FieldSpec } from "@/lib/mock-sessions";
 
 const STEP_TYPES = new Set<BlueprintStepType>(["io", "ai", "human_review"]);
+const FIELD_TYPES = new Set<FieldSpec["type"]>([
+  "text",
+  "enum",
+  "date",
+  "number",
+  "boolean",
+]);
+
+function parseOutputFields(raw: unknown): FieldSpec[] {
+  if (!Array.isArray(raw)) return [];
+  const fields: FieldSpec[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const f = item as Record<string, unknown>;
+    if (typeof f.name !== "string" || !f.name.trim()) continue;
+    if (typeof f.type !== "string" || !FIELD_TYPES.has(f.type as FieldSpec["type"])) {
+      continue;
+    }
+    fields.push({
+      name: f.name,
+      type: f.type as FieldSpec["type"],
+      required: f.required === true,
+      missingBehavior: f.missingBehavior === "default" ? "default" : "empty",
+      ...(Array.isArray(f.allowedValues)
+        ? { allowedValues: f.allowedValues.filter((v): v is string => typeof v === "string") }
+        : {}),
+      ...(typeof f.defaultValue === "string" ? { defaultValue: f.defaultValue } : {}),
+      ...(typeof f.rule === "string" ? { rule: f.rule } : {}),
+    });
+  }
+  return fields;
+}
 
 export function parseBlueprintJson(text: string): Blueprint | null {
   let data: unknown;
@@ -69,6 +101,10 @@ export function parseBlueprintJson(text: string): Blueprint | null {
         .map((t) => t.trim())
         .filter(Boolean);
       return integration_targets.length ? { integration_targets } : {};
+    })(),
+    ...(() => {
+      const output_fields = parseOutputFields(obj.output_fields);
+      return output_fields.length ? { output_fields } : {};
     })(),
   };
 }

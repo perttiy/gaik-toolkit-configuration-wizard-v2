@@ -142,7 +142,7 @@ export default async function SessionPage({
                 t={t}
               />
             ) : isSpec ? (
-              <FieldSchemaEditor />
+              <FieldSchemaEditor sessionId={session.id} blueprint={session.blueprint} />
             ) : isGathering ? (
               <GatheringView
                 phaseTitle={currentPhase}

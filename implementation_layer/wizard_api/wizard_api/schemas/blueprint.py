@@ -22,6 +22,8 @@ class BlueprintContent(BaseModel):
     gateways: list[dict] = Field(default_factory=list)
     # Persistent repositories → BPMN dataStoreReference (+ send task) via V1 generator.
     integration_targets: list[str] = Field(default_factory=list)
+    # Structured output field schema the SME manager defines (SME-7 / #25).
+    output_fields: list[dict] = Field(default_factory=list)
 
 
 class BusinessContext(BaseModel):

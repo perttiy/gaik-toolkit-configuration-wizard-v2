@@ -78,6 +78,20 @@ export type Blueprint = {
   gateways?: { id: string; name: string; type: "exclusive" | "parallel" }[];
   /** Persistent systems → BPMN data stores (+ submit send task). */
   integration_targets?: string[];
+  /** Structured output field schema — what the solution's output should
+   * contain, defined by the SME manager (SME-7 / #25). */
+  output_fields?: FieldSpec[];
+};
+
+/** One field in the structured output schema (SME-7 / #25). */
+export type FieldSpec = {
+  name: string;
+  type: "text" | "enum" | "date" | "number" | "boolean";
+  allowedValues?: string[];
+  required: boolean;
+  missingBehavior: "empty" | "default";
+  defaultValue?: string;
+  rule?: string;
 };
 
 export type ChatRole = "user" | "assistant";

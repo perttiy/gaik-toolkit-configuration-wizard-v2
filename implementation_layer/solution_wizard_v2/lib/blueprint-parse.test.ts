@@ -74,4 +74,63 @@ describe("parseBlueprintJson", () => {
     );
     expect(parsed?.steps[0]?.settings).toBeUndefined();
   });
+
+  it("keeps valid output_fields (SME-7)", () => {
+    const parsed = parseBlueprintJson(
+      JSON.stringify({
+        name: "Demo",
+        steps: [{ id: "input", name: "Syöte", type: "io" }],
+        output_fields: [
+          {
+            name: "Havaintotyyppi",
+            type: "enum",
+            allowedValues: ["Near miss", "safety observation"],
+            required: true,
+            missingBehavior: "default",
+            defaultValue: "safety observation",
+            rule: "Valitse yksi.",
+          },
+          { name: "Kuvaus", type: "text", required: false, missingBehavior: "empty" },
+        ],
+      }),
+    );
+    expect(parsed?.output_fields).toEqual([
+      {
+        name: "Havaintotyyppi",
+        type: "enum",
+        allowedValues: ["Near miss", "safety observation"],
+        required: true,
+        missingBehavior: "default",
+        defaultValue: "safety observation",
+        rule: "Valitse yksi.",
+      },
+      { name: "Kuvaus", type: "text", required: false, missingBehavior: "empty" },
+    ]);
+  });
+
+  it("drops output_fields entries with an unknown type, keeps the rest", () => {
+    const parsed = parseBlueprintJson(
+      JSON.stringify({
+        name: "Demo",
+        steps: [{ id: "input", name: "Syöte", type: "io" }],
+        output_fields: [
+          { name: "Bad", type: "not-a-type", required: false, missingBehavior: "empty" },
+          { name: "Good", type: "text", required: false, missingBehavior: "empty" },
+        ],
+      }),
+    );
+    expect(parsed?.output_fields).toEqual([
+      { name: "Good", type: "text", required: false, missingBehavior: "empty" },
+    ]);
+  });
+
+  it("omits output_fields when empty or absent", () => {
+    const parsed = parseBlueprintJson(
+      JSON.stringify({
+        name: "Demo",
+        steps: [{ id: "input", name: "Syöte", type: "io" }],
+      }),
+    );
+    expect(parsed?.output_fields).toBeUndefined();
+  });
 });
