@@ -10,9 +10,12 @@ COPY wizard_api/alembic ./alembic
 COPY wizard_api/alembic.ini ./
 COPY wizard_api/tests ./tests
 
-# solution_wizard provides BPMN generation (V2 adapter + bpmn_generator)
+# solution_wizard provides BPMN generation (V2 adapter + bpmn_generator).
+# It is a src-layout package with no build config — imported via sys.path, not
+# pip (see wizard_api/tests/conftest.py). Put its src on PYTHONPATH; its only
+# third-party dep (pydantic) is already installed with wizard_api below.
 COPY solution_wizard /solution_wizard
-RUN pip install --no-cache-dir -e /solution_wizard
+ENV PYTHONPATH=/solution_wizard/src
 
 RUN pip install --no-cache-dir -e .
 
