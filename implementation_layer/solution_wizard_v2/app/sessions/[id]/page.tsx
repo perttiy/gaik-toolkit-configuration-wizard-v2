@@ -137,6 +137,7 @@ export default async function SessionPage({
                 sessionId={session.id}
                 points={points}
                 answers={answers}
+                rejected={session.gateStatus[session.step] === "rejected"}
                 t={t}
               />
             ) : isSpec ? (

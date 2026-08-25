@@ -9,11 +9,13 @@ export function Gate1Review({
   sessionId,
   points,
   answers,
+  rejected,
   t,
 }: {
   sessionId: string;
   points: string[];
   answers: string[];
+  rejected: boolean;
   t: Dict;
 }) {
   const items = points;
@@ -31,6 +33,19 @@ export function Gate1Review({
           {t.gate1Intro}
         </p>
       </div>
+
+      {rejected && (
+        <div
+          role="status"
+          className="mt-4 flex items-start gap-2 rounded-md border border-danger-border bg-danger-bg px-3 py-2.5 text-sm text-danger-text"
+        >
+          <span
+            className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-danger-text"
+            aria-hidden
+          />
+          <span>{t.gate1RejectedNotice}</span>
+        </div>
+      )}
 
       <div className="mt-6 overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
@@ -98,20 +113,38 @@ export function Gate1Review({
           {t.gate1Approve}
         </button>
       </form>
-      <div className="mt-2 flex items-center justify-center gap-2">
-        <form action={requestChanges}>
+      <details className="mt-4 rounded-lg border border-border bg-surface">
+        <summary className="cursor-pointer px-4 py-2.5 text-sm font-medium text-text-secondary">
+          {t.requestChanges}
+        </summary>
+        <form action={requestChanges} className="px-4 pb-4">
           <input type="hidden" name="id" value={sessionId} />
-          <button type="submit" className="btn-secondary">
+          <label
+            htmlFor="gate1-feedback"
+            className="mb-1.5 block text-xs font-semibold text-text-muted"
+          >
+            {t.requestChangesLabel}
+          </label>
+          <textarea
+            id="gate1-feedback"
+            name="feedback"
+            required
+            minLength={1}
+            rows={3}
+            placeholder={t.requestChangesPlaceholder}
+            className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-brand/40"
+          />
+          <button type="submit" className="btn-secondary mt-2 w-full justify-center">
             {t.requestChanges}
           </button>
         </form>
-        <form action={reject}>
-          <input type="hidden" name="id" value={sessionId} />
-          <button type="submit" className="btn-ghost">
-            {t.rejectGate}
-          </button>
-        </form>
-      </div>
+      </details>
+      <form action={reject} className="mt-2">
+        <input type="hidden" name="id" value={sessionId} />
+        <button type="submit" className="btn-ghost w-full justify-center">
+          {t.rejectGate}
+        </button>
+      </form>
     </div>
   );
 }

@@ -139,11 +139,15 @@ export type Dict = {
   rejectGate: string;
   requestChanges: string;
   changesRequested: string;
+  changesRequestedFallback: string;
+  requestChangesLabel: string;
+  requestChangesPlaceholder: string;
   gate1Title: string;
   gate1Intro: string;
   gate1ChecklistTitle: string;
   gate1Answered: string;
   gate1Approve: string;
+  gate1RejectedNotice: string;
   gatheringCollecting: string;
   gatheringPrompt: string;
   gatheringAdvanceHint: string;
@@ -298,12 +302,17 @@ const fi: Dict = {
   requestChanges: "Pyydä muutoksia",
   changesRequested:
     "Muutospyyntö kirjattu. Palattiin speksivaiheeseen tarkennusta varten.",
+  changesRequestedFallback: "Muutospyyntö ilman lisätietoja.",
+  requestChangesLabel: "Mitä pitää muuttaa?",
+  requestChangesPlaceholder: "Kuvaa lyhyesti mikä ei vielä täsmää…",
   gate1Title: "Vaatimusten tarkistus",
   gate1Intro:
     "Tarkista että vaiheissa 1–3 kerätyt vaatimukset ovat riittävät. Hyväksyntä lukitsee vaatimukset ja käynnistää arkkitehtuurin suunnittelun.",
   gate1ChecklistTitle: "Kerätyt vaatimukset",
   gate1Answered: "kohtaa vastattu",
   gate1Approve: "Hyväksy vaatimukset & Jatka →",
+  gate1RejectedNotice:
+    "Tämä gate on hylätty. Voit yrittää uudelleen: hyväksy, pyydä muutoksia tai hylkää.",
   gatheringCollecting: "Kerätään vaatimuksia",
   gatheringPrompt:
     "Kuvaa liiketoimintaongelmasi chatissa. Wizard kerää tarvittavat vaatimukset ja muotoilee niistä ratkaisun — arkkitehtuuria ja kaavioita ei vielä tässä vaiheessa.",
@@ -478,12 +487,17 @@ const en: Dict = {
   requestChanges: "Request changes",
   changesRequested:
     "Changes requested. Returned to the specification step for revision.",
+  changesRequestedFallback: "Change requested (no additional detail provided).",
+  requestChangesLabel: "What needs to change?",
+  requestChangesPlaceholder: "Briefly describe what's not right yet…",
   gate1Title: "Requirements review",
   gate1Intro:
     "Check that the requirements gathered in steps 1–3 are sufficient. Approving locks the requirements and starts the architecture design.",
   gate1ChecklistTitle: "Gathered requirements",
   gate1Answered: "points answered",
   gate1Approve: "Approve requirements & Continue →",
+  gate1RejectedNotice:
+    "This gate was rejected. You can try again: approve, request changes, or reject.",
   gatheringCollecting: "Collecting requirements",
   gatheringPrompt:
     "Describe your business problem in the chat. The wizard collects the requirements it needs and shapes them into a solution — no architecture or diagrams yet at this stage.",
