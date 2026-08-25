@@ -35,6 +35,7 @@ export default async function SessionPage({
   const onGate = isGateStep(session.step);
   const gateBlocking =
     onGate && session.gateStatus[session.step] !== "approved";
+  const gateRejected = onGate && session.gateStatus[session.step] === "rejected";
   const isGate1 = session.step === 4;
   const isSpec = session.step === 3;
   const isGathering = session.step <= 3;
@@ -152,17 +153,30 @@ export default async function SessionPage({
               />
             ) : (
               <>
-                {gateBlocking && (
+                {gateRejected ? (
                   <div
                     role="status"
-                    className="shrink-0 mb-4 rounded-md border border-warning-border bg-warning-bg px-3 py-2.5 text-sm text-warning-text flex items-start gap-2"
+                    className="shrink-0 mb-4 rounded-md border border-danger-border bg-danger-bg px-3 py-2.5 text-sm text-danger-text flex items-start gap-2"
                   >
                     <span
-                      className="h-1.5 w-1.5 mt-1.5 rounded-full bg-warning-text shrink-0"
+                      className="h-1.5 w-1.5 mt-1.5 rounded-full bg-danger-text shrink-0"
                       aria-hidden
                     />
-                    <span>{t.gateNotice}</span>
+                    <span>{t.gateRejectedNotice}</span>
                   </div>
+                ) : (
+                  gateBlocking && (
+                    <div
+                      role="status"
+                      className="shrink-0 mb-4 rounded-md border border-warning-border bg-warning-bg px-3 py-2.5 text-sm text-warning-text flex items-start gap-2"
+                    >
+                      <span
+                        className="h-1.5 w-1.5 mt-1.5 rounded-full bg-warning-text shrink-0"
+                        aria-hidden
+                      />
+                      <span>{t.gateNotice}</span>
+                    </div>
+                  )
                 )}
 
                 <WorkspacePanel
@@ -187,12 +201,38 @@ export default async function SessionPage({
             {!isGate1 &&
               (gateBlocking ? (
               <div className="flex items-center gap-2">
-                <form action={requestChanges}>
-                  <input type="hidden" name="id" value={session.id} />
-                  <button type="submit" className="btn-secondary">
+                <details className="relative">
+                  <summary className="btn-secondary cursor-pointer list-none">
                     {t.requestChanges}
-                  </button>
-                </form>
+                  </summary>
+                  <form
+                    action={requestChanges}
+                    className="absolute bottom-full right-0 z-20 mb-2 w-80 rounded-lg border border-border bg-surface p-3 shadow-lg"
+                  >
+                    <input type="hidden" name="id" value={session.id} />
+                    <label
+                      htmlFor="gate-feedback"
+                      className="mb-1.5 block text-xs font-semibold text-text-muted"
+                    >
+                      {t.requestChangesLabel}
+                    </label>
+                    <textarea
+                      id="gate-feedback"
+                      name="feedback"
+                      required
+                      minLength={1}
+                      rows={3}
+                      placeholder={t.requestChangesPlaceholder}
+                      className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-brand/40"
+                    />
+                    <button
+                      type="submit"
+                      className="btn-secondary mt-2 w-full justify-center"
+                    >
+                      {t.requestChanges}
+                    </button>
+                  </form>
+                </details>
                 <form action={reject}>
                   <input type="hidden" name="id" value={session.id} />
                   <button type="submit" className="btn-ghost">

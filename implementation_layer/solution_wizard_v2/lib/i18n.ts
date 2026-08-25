@@ -153,6 +153,10 @@ export type Dict = {
   rejectGate: string;
   requestChanges: string;
   changesRequested: string;
+  changesRequestedFallback: string;
+  requestChangesLabel: string;
+  requestChangesPlaceholder: string;
+  gateRejectedNotice: string;
   gate1Title: string;
   gate1Intro: string;
   gate1ChecklistTitle: string;
@@ -343,7 +347,12 @@ const fi: Dict = {
   rejectGate: "Hylkää",
   requestChanges: "Pyydä muutoksia",
   changesRequested:
-    "Muutospyyntö kirjattu. Palattiin speksivaiheeseen tarkennusta varten.",
+    "Muutospyyntö kirjattu. Palattiin edelliseen vaiheeseen tarkennusta varten.",
+  changesRequestedFallback: "Muutospyyntö ilman lisätietoja.",
+  requestChangesLabel: "Mitä pitää muuttaa?",
+  requestChangesPlaceholder: "Kuvaa lyhyesti mikä ei vielä täsmää…",
+  gateRejectedNotice:
+    "Tämä gate on hylätty. Voit yrittää uudelleen: hyväksy, pyydä muutoksia tai hylkää.",
   gate1Title: "Vaatimusten tarkistus",
   gate1Intro:
     "Tarkista että vaiheissa 1–3 kerätyt vaatimukset ovat riittävät. Hyväksyntä lukitsee vaatimukset ja käynnistää arkkitehtuurin suunnittelun.",
@@ -557,7 +566,12 @@ const en: Dict = {
   rejectGate: "Reject",
   requestChanges: "Request changes",
   changesRequested:
-    "Changes requested. Returned to the specification step for revision.",
+    "Changes requested. Returned to the previous step for revision.",
+  changesRequestedFallback: "Change requested (no additional detail provided).",
+  requestChangesLabel: "What needs to change?",
+  requestChangesPlaceholder: "Briefly describe what's not right yet…",
+  gateRejectedNotice:
+    "This gate was rejected. You can try again: approve, request changes, or reject.",
   gate1Title: "Requirements review",
   gate1Intro:
     "Check that the requirements gathered in steps 1–3 are sufficient. Approving locks the requirements and starts the architecture design.",

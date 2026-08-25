@@ -369,11 +369,13 @@ export function GateTimeline({
                             gs ? GATE_BADGE[gs] : "bg-black/[0.05] text-text-muted"
                           }`}
                         >
-                          {state === "approved"
-                            ? L.approved
-                            : state === "current"
-                              ? L.ahead
-                              : L.locked}
+                          {gs === "rejected"
+                            ? L.rejected
+                            : state === "approved"
+                              ? L.approved
+                              : state === "current"
+                                ? L.ahead
+                                : L.locked}
                         </span>
                       </div>
                     </div>
