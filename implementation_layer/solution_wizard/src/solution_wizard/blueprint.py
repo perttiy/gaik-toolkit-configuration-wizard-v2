@@ -265,6 +265,7 @@ class DecisionPoint(BaseModel):
     id: str
     name: str
     after: str = ""  # step id this gateway follows
+    type: str = "exclusive"  # "exclusive" | "parallel" (V2 canvas gateway type, #48)
     branches: List[DecisionBranch] = []
 
 

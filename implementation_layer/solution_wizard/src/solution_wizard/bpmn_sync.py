@@ -176,23 +176,85 @@ def _artifact_step_map(v2_blueprint: dict[str, Any]) -> dict[str, str]:
     return mapping
 
 
+_TASK_LOCAL_NAMES = {"userTask", "serviceTask", "task", "manualTask", "sendTask", "callActivity"}
+_NODE_TAGS = _TASK_LOCAL_NAMES | {
+    "startEvent",
+    "endEvent",
+    "exclusiveGateway",
+    "parallelGateway",
+}
+
+
+def _resolve_flow_endpoint(local: str, bpmn_id: str) -> str | None:
+    """Map a sequenceFlow endpoint to a V2 decision-point target: a step id, "end", or
+    None when it lands on something we don't model in ``gateways[].outgoing`` yet
+    (another gateway, a boundary event, ...) — best-effort, matches the rest of this
+    module's tolerance for canvas edits it can't fully interpret."""
+    if local == "endEvent":
+        return "end"
+    if local in _TASK_LOCAL_NAMES and not _is_synthetic_task(bpmn_id):
+        return _bpmn_id_to_step_id(bpmn_id)
+    return None
+
+
 def _sync_gateways(root: ET.Element) -> list[dict[str, Any]]:
-    """Snapshot exclusive/parallel gateways from the canvas (#48)."""
-    out: list[dict[str, Any]] = []
-    for el in root.iter():
+    """Snapshot exclusive/parallel gateways from the canvas (#48), including enough
+    topology (``after`` / ``outgoing``) to regenerate a real branch/parallel-fork
+    gateway later, not just rename an auto-derived one (S3-1)."""
+    processes = [el for el in root.iter() if _local(el.tag) == "process"]
+    if not processes:
+        return []
+    process = processes[0]
+
+    node_local: dict[str, str] = {}
+    for el in process.iter():
         local = _local(el.tag)
+        if local in _NODE_TAGS and el.get("id"):
+            node_local[el.get("id") or ""] = local
+
+    incoming: dict[str, list[str]] = {}
+    outgoing_flows: dict[str, list[tuple[str, str]]] = {}
+    for el in process.iter():
+        if _local(el.tag) != "sequenceFlow":
+            continue
+        src, tgt = el.get("sourceRef"), el.get("targetRef")
+        if not src or not tgt:
+            continue
+        incoming.setdefault(tgt, []).append(src)
+        outgoing_flows.setdefault(src, []).append((tgt, (el.get("name") or "").strip()))
+
+    out: list[dict[str, Any]] = []
+    for gid, local in node_local.items():
         if local not in ("exclusiveGateway", "parallelGateway"):
             continue
-        gid = el.get("id") or ""
-        if not gid:
-            continue
-        out.append(
-            {
-                "id": gid,
-                "name": (el.get("name") or "").strip(),
-                "type": "exclusive" if local == "exclusiveGateway" else "parallel",
-            }
+        el = next((e for e in process.iter() if e.get("id") == gid), None)
+        entry: dict[str, Any] = {
+            "id": gid,
+            "name": ((el.get("name") if el is not None else "") or "").strip(),
+            "type": "exclusive" if local == "exclusiveGateway" else "parallel",
+        }
+
+        preds = incoming.get(gid) or []
+        after = next(
+            (
+                _bpmn_id_to_step_id(p)
+                for p in preds
+                if node_local.get(p) in _TASK_LOCAL_NAMES and not _is_synthetic_task(p)
+            ),
+            None,
         )
+        if after:
+            entry["after"] = after
+
+        branches = []
+        for tgt, name in outgoing_flows.get(gid) or []:
+            target = _resolve_flow_endpoint(node_local.get(tgt, ""), tgt)
+            if target:
+                branches.append({"condition": name, "target": target})
+        if branches:
+            entry["outgoing"] = branches
+
+        out.append(entry)
     return out
 
 
