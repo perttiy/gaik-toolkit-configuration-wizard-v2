@@ -58,6 +58,18 @@ export type Dict = {
   wsTabJson: string;
   wsTabPlan: string;
   wsTabPoc: string;
+  wsTabDeploy: string;
+  deployIntro: string;
+  deployStepsTitle: string;
+  deploySteps: string[];
+  deployChecklistTitle: string;
+  deployChecklistEmpty: string;
+  deployChecklistComponent: string;
+  deployChecklistIntegration: string;
+  deployChecklistReviewer: string;
+  deployChecklistSecrets: string;
+  deployChecklistDryRun: string;
+  deployRahtiNote: string;
   wsBlueprintGoal: string;
   wsStepAi: string;
   wsStepHuman: string;
@@ -244,6 +256,26 @@ const fi: Dict = {
   wsTabJson: "Blueprint",
   wsTabPlan: "Suunnitelma",
   wsTabPoc: "PoC",
+  wsTabDeploy: "Käyttöönotto",
+  deployIntro:
+    "Kun ratkaisu on valmis, se paketoidaan asennettavaksi paketiksi ja otetaan käyttöön kehitysympäristössä ennen tuotantoa. Tätä ei tarvitse tehdä itse — tässä on mitä tapahtuu ja mitä sinulta tarvitaan.",
+  deployStepsTitle: "Käyttöönoton vaiheet",
+  deploySteps: [
+    "Ratkaisusta kootaan asennettava paketti tämän blueprintin pohjalta.",
+    "Paketti asennetaan GAIKin Rahti-kehitysympäristöön.",
+    "Tarvittavat käyttöoikeudet ja avaimet määritetään ympäristöön (katso tarkistuslista alla).",
+    "Ratkaisu ajetaan läpi kehitysympäristössä ennen kuin sitä käytetään tuotannossa.",
+  ],
+  deployChecklistTitle: "Tarkistuslista tälle ratkaisulle",
+  deployChecklistEmpty:
+    "Blueprintissä ei vielä ole komponentteja tai integraatioita, joten tarkistuslistalla on vain yleiset kohdat.",
+  deployChecklistComponent: "Varmista käyttöoikeus komponenttiin",
+  deployChecklistIntegration: "Varmista pääsy järjestelmään",
+  deployChecklistReviewer: "Nimeä vastuuhenkilö tarkistusvaiheelle",
+  deployChecklistSecrets: "Määritä tarvittavat API-avaimet ja salaisuudet ympäristöön",
+  deployChecklistDryRun: "Aja ratkaisu läpi kehitysympäristössä ennen käyttöönottoa",
+  deployRahtiNote:
+    "Ympäristön osoitteen saat GAIK-tiimiltä, kun paketti on valmis asennettavaksi.",
   wsBlueprintGoal: "Tavoite",
   wsStepAi: "AI-vaihe",
   wsStepHuman: "Ihmistarkistus",
@@ -465,6 +497,26 @@ const en: Dict = {
   wsTabJson: "Blueprint",
   wsTabPlan: "Plan",
   wsTabPoc: "PoC",
+  wsTabDeploy: "Deployment",
+  deployIntro:
+    "Once the solution is ready, it gets packaged for installation and deployed to a dev environment before production. You don't need to do this yourself — here's what happens and what's needed from you.",
+  deployStepsTitle: "Deployment steps",
+  deploySteps: [
+    "The solution is packaged into an installable package from this blueprint.",
+    "The package is deployed to GAIK's Rahti dev environment.",
+    "The required access and keys are configured in the environment (see the checklist below).",
+    "The solution is run through in the dev environment before it's used in production.",
+  ],
+  deployChecklistTitle: "Checklist for this solution",
+  deployChecklistEmpty:
+    "The blueprint doesn't have any components or integrations yet, so the checklist only has the general items.",
+  deployChecklistComponent: "Confirm access to component",
+  deployChecklistIntegration: "Confirm access to system",
+  deployChecklistReviewer: "Assign an owner for the review step",
+  deployChecklistSecrets: "Set the required API keys and secrets in the environment",
+  deployChecklistDryRun: "Run the solution through in the dev environment before deploying",
+  deployRahtiNote:
+    "You'll get the environment address from the GAIK team once the package is ready to install.",
   wsBlueprintGoal: "Goal",
   wsStepAi: "AI step",
   wsStepHuman: "Human review",

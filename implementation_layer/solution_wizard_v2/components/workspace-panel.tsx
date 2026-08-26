@@ -7,6 +7,7 @@ import type { Dict } from "@/lib/i18n";
 import { shouldShowBpmnSpike } from "@/lib/bpmn-spike";
 import { BlueprintJsonEditor } from "@/components/blueprint-json-editor";
 import { SolutionPlanView } from "@/components/solution-plan-view";
+import { DeploymentGuide } from "@/components/deployment-guide";
 
 const BpmnDiagramPanel = dynamic(
   () =>
@@ -201,10 +202,10 @@ function WorkflowFlowTab({
   );
 }
 
-type Tab = "flow" | "json" | "plan" | "poc";
+type Tab = "flow" | "json" | "plan" | "poc" | "deploy";
 type PocStatus = "idle" | "running" | "success" | "failed";
 
-const TABS: Tab[] = ["flow", "json", "plan", "poc"];
+const TABS: Tab[] = ["flow", "json", "plan", "poc", "deploy"];
 
 export function WorkspacePanel({
   sessionId,
@@ -231,6 +232,7 @@ export function WorkspacePanel({
     json: t.wsTabJson,
     plan: t.wsTabPlan,
     poc: t.wsTabPoc,
+    deploy: t.wsTabDeploy,
   };
 
   const typeLabel: Record<BlueprintStepType, string> = {
@@ -336,6 +338,8 @@ export function WorkspacePanel({
             )}
 
             {key === "plan" && <SolutionPlanView blueprint={blueprint} t={t} />}
+
+            {key === "deploy" && <DeploymentGuide blueprint={blueprint} t={t} />}
 
             {key === "poc" && (
               <div className="h-full flex flex-col min-h-0">
