@@ -70,6 +70,7 @@ export function ChatPanel({
   sendLabel,
   streamFailedLabel,
   thinkingLabel,
+  sessionCostLabel,
   inputValue,
   onInputChange,
   userInitial,
@@ -84,12 +85,17 @@ export function ChatPanel({
   sendLabel: string;
   streamFailedLabel: string;
   thinkingLabel: string;
+  sessionCostLabel: string;
   inputValue: string;
   onInputChange: (value: string) => void;
   userInitial: string;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [streaming, setStreaming] = useState(false);
+  // Dev-facing cost visibility (#123) — only ever set when the real agent's
+  // SSE "done" frame carries totalCostUsd; the mock chat never sends it, so
+  // this stays null (and hidden) in mock mode without any extra flag.
+  const [totalCostUsd, setTotalCostUsd] = useState<number | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputId = `${id}-input`;
@@ -155,6 +161,9 @@ export function ChatPanel({
               ),
             );
           }
+          if (evt.done && typeof evt.totalCostUsd === "number") {
+            setTotalCostUsd(evt.totalCostUsd);
+          }
         }
       }
     } catch {
@@ -175,9 +184,19 @@ export function ChatPanel({
 
   return (
     <div id={id} className="flex flex-col h-full min-h-0">
-      <h2 className="shrink-0 h-11 px-5 flex items-center gap-2 border-b border-border text-xs font-semibold uppercase tracking-wider text-text-muted">
-        <RobotHex px={22} />
-        {chatTitle}
+      <h2 className="shrink-0 h-11 px-5 flex items-center justify-between gap-2 border-b border-border text-xs font-semibold uppercase tracking-wider text-text-muted">
+        <span className="flex items-center gap-2">
+          <RobotHex px={22} />
+          {chatTitle}
+        </span>
+        {totalCostUsd !== null && (
+          <span
+            className="normal-case font-normal text-[11px] text-text-muted/80"
+            title={sessionCostLabel}
+          >
+            ${totalCostUsd.toFixed(4)}
+          </span>
+        )}
       </h2>
 
       <div

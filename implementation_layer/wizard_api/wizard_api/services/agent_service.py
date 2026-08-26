@@ -22,16 +22,22 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
+import shlex
 import time
 from collections.abc import AsyncGenerator
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 try:
     from claude_agent_sdk import (
         AssistantMessage,
         ClaudeAgentOptions,
         ClaudeSDKClient,
+        PermissionResultAllow,
+        PermissionResultDeny,
         ResultMessage,
         TextBlock,
     )
@@ -40,6 +46,7 @@ try:
 except ImportError:  # pragma: no cover - exercised only where the SDK is absent
     _SDK_AVAILABLE = False
     AssistantMessage = ClaudeAgentOptions = ClaudeSDKClient = ResultMessage = TextBlock = None  # type: ignore
+    PermissionResultAllow = PermissionResultDeny = None  # type: ignore
 
 # StreamEvent (token-level partials) lives in the types submodule on some SDK
 # versions, the top level on others. Optional.
@@ -122,6 +129,28 @@ def sse_headers() -> dict[str, str]:
         "Connection": "keep-alive",
         "X-Accel-Buffering": "no",
     }
+
+
+def _log_turn_cost(session: dict, result) -> float:
+    """Dev-facing token/cost visibility (#123): log what each agent turn
+    actually cost, since running live sessions locally otherwise gives zero
+    insight into spend, and track a running per-session total so the UI can
+    show a lightweight indicator. Deliberately just a log line + an
+    in-memory accumulator — no Postgres, no enforcement; that's the separate
+    production guardrail in S8-4. Returns the updated running total."""
+    cost = result.total_cost_usd or 0.0
+    total = session.get("total_cost_usd", 0.0) + cost
+    session["total_cost_usd"] = total
+    logger.info(
+        "agent.turn session=%s cost_usd=%s total_cost_usd=%s duration_ms=%s turns=%s usage=%s",
+        session.get("session_id", "?"),
+        cost,
+        total,
+        result.duration_ms,
+        result.num_turns,
+        result.usage,
+    )
+    return total
 
 
 def _extract_stream_text(event) -> str:
@@ -244,6 +273,7 @@ async def _stream_turn(
                         out_parts.append(block.text)
                         yield sse({"delta": block.text})
             elif isinstance(message, ResultMessage):
+                total_cost = _log_turn_cost(session, message)
                 if message.is_error:
                     yield sse(
                         {
@@ -259,7 +289,13 @@ async def _stream_turn(
                     ):
                         yield chunk
                 else:
-                    yield sse({"done": True})
+                    yield sse(
+                        {
+                            "done": True,
+                            "costUsd": message.total_cost_usd,
+                            "totalCostUsd": total_cost,
+                        }
+                    )
                 break
     except Exception as exc:  # noqa: BLE001
         yield sse({"error": True, "message": str(exc)})
@@ -267,11 +303,84 @@ async def _stream_turn(
         session["last_active"] = time.time()
 
 
-async def _drain_silent(client) -> None:
-    """Consume one turn without emitting (used for the bootstrap turn)."""
-    async for message in client.receive_response():
-        if isinstance(message, ResultMessage):
-            break
+async def _drain_silent(
+    client, session: dict, *, grace_seconds: float = 0.4, max_rounds: int = 3
+) -> None:
+    """Consume the bootstrap turn without emitting anything user-facing.
+
+    ``receive_response()`` stops at the *first* ``ResultMessage`` it sees, but
+    the bootstrap exchange can straddle more than one ``ResultMessage``
+    boundary internally (e.g. a tool-use round — reading SKILL.md — completes
+    with its own ``ResultMessage`` before the model's final, still-silent
+    text settles). Stopping at the first one leaves the trailing messages
+    un-drained on the client's single shared message stream; they then leak
+    into the *next* ``receive_response()`` call — the user's real first turn
+    — as stray visible bootstrap commentary (observed ~1/3 of fresh
+    sessions). Guard against this with a short grace window after each
+    ``ResultMessage``: if more output keeps arriving, it belongs to this same
+    bootstrap exchange and must be drained too.
+    """
+    stream = client.receive_messages().__aiter__()
+    pending = None
+    rounds = 0
+    while True:
+        saw_result = False
+        while True:
+            if pending is not None:
+                message, pending = pending, None
+            else:
+                try:
+                    message = await stream.__anext__()
+                except StopAsyncIteration:
+                    return
+            if isinstance(message, ResultMessage):
+                saw_result = True
+                _log_turn_cost(session, message)
+                break
+        if not saw_result:
+            return
+        rounds += 1
+        if rounds >= max_rounds:
+            return
+        try:
+            pending = await asyncio.wait_for(stream.__anext__(), timeout=grace_seconds)
+        except (TimeoutError, StopAsyncIteration):
+            return
+
+
+# The only shell commands the wizard agent's own SKILL.md instructs it to run —
+# every phase invokes one of these as `python scripts/<name>.py [...args]` from
+# wizard_dir. Anything else requested via the Bash tool is denied.
+_ALLOWED_SCRIPTS = {
+    "check_requirements.py",
+    "validate_blueprint.py",
+    "generate_mermaid.py",
+    "generate_bpmn.py",
+    "generate_schema.py",
+    "scaffold_poc.py",
+    "generate_docs.py",
+    "promote_template.py",
+    "run_wizard.py",
+}
+
+
+async def _can_use_tool(tool_name, tool_input, _context):
+    """Scope the Bash tool to the wizard's own scripts/*.py helpers; allow the
+    rest (Read/Grep/Glob/Write/Edit are already confined to cwd/add_dirs by the
+    SDK itself, so only Bash needs a per-call check here)."""
+    if tool_name != "Bash":
+        return PermissionResultAllow()
+    command = str(tool_input.get("command", ""))
+    try:
+        parts = shlex.split(command)
+    except ValueError:
+        return PermissionResultDeny(message="Could not parse the requested command.")
+    if len(parts) >= 2 and parts[0] in ("python", "python3") and parts[1].startswith("scripts/"):
+        if parts[1].rsplit("/", 1)[-1] in _ALLOWED_SCRIPTS:
+            return PermissionResultAllow()
+    return PermissionResultDeny(
+        message="Only the solution_wizard scripts/*.py helpers may be run via Bash."
+    )
 
 
 def _build_options(wizard_dir: Path, output_dir: Path):
@@ -280,8 +389,15 @@ def _build_options(wizard_dir: Path, output_dir: Path):
         add_dirs=[str(output_dir)],
         env=_agent_env(),
         model=_model(),
-        allowed_tools=["Read", "Grep", "Glob", "Write", "Edit", "Bash"],
-        permission_mode="bypassPermissions",
+        # Bash is deliberately left out of allowed_tools: naming a whole tool
+        # there auto-approves every call before can_use_tool ever runs. Leaving
+        # it out means Bash stays available but always falls through to the
+        # callback below, which is what actually enforces the scripts/*.py
+        # allowlist. Read/Grep/Glob/Write/Edit are safe to pre-approve here —
+        # they're already confined to cwd/add_dirs by the SDK itself.
+        allowed_tools=["Read", "Grep", "Glob", "Write", "Edit"],
+        permission_mode="default",
+        can_use_tool=_can_use_tool,
         setting_sources=[],
         include_partial_messages=True,
     )
@@ -311,17 +427,22 @@ async def get_or_create_session(
     out.mkdir(parents=True, exist_ok=True)
     client = ClaudeSDKClient(options=_build_options(wizard_dir, out))
     await client.connect()
-    # Bootstrap turn: invoke the skill + pin output dir. Drained silently — the
-    # prompt tells the agent not to greet, so it produces nothing user-facing.
-    await client.query(_bootstrap_prompt(out, locale))
-    await _drain_silent(client)
 
     session = {
+        "session_id": session_id,
         "client": client,
         "output_dir": out,
         "lock": asyncio.Lock(),
         "last_active": time.time(),
+        "total_cost_usd": 0.0,
     }
+    # Bootstrap turn: invoke the skill + pin output dir. Drained silently — the
+    # prompt tells the agent not to greet, so it produces nothing user-facing.
+    # Still a real, billed turn, so it counts toward the session's running
+    # cost total (#123) same as any other.
+    await client.query(_bootstrap_prompt(out, locale))
+    await _drain_silent(client, session)
+
     AGENT_SESSIONS[session_id] = session
     return session
 

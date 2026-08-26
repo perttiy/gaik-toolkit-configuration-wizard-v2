@@ -5,6 +5,17 @@ from sqlalchemy.orm import Session
 
 from wizard_api.models import BlueprintVersion, WizardSession
 
+try:
+    from solution_wizard.blueprint_ops import ChangeOpError, apply_change_ops
+
+    _BLUEPRINT_OPS_AVAILABLE = True
+except ImportError:  # pragma: no cover - optional in minimal installs
+    _BLUEPRINT_OPS_AVAILABLE = False
+
+
+class BlueprintOpsError(RuntimeError):
+    """Change-ops unavailable or the op list itself was invalid."""
+
 
 def default_blueprint_content(title: str) -> dict:
     """Dummy blueprint so new sessions have editable BPMN/JSON before schema design."""
@@ -113,3 +124,54 @@ def get_active_version(db: Session, session: WizardSession) -> BlueprintVersion 
         BlueprintVersion.version == session.active_version,
     )
     return db.scalars(stmt).first()
+
+
+def get_version(db: Session, session_id: uuid.UUID, version: int) -> BlueprintVersion | None:
+    stmt = select(BlueprintVersion).where(
+        BlueprintVersion.session_id == session_id,
+        BlueprintVersion.version == version,
+    )
+    return db.scalars(stmt).first()
+
+
+def apply_ops(
+    db: Session,
+    session: WizardSession,
+    *,
+    ops: list[dict],
+    note: str = "Blueprint change-ops",
+) -> BlueprintVersion:
+    """Apply structured change-ops (S3-4/#66) to the active blueprint and
+    create a new version from the result. JSON stays source of truth — the
+    caller (BPMN sync route) is responsible for regenerating BPMN from the
+    returned content afterward, same as any other add_version() call."""
+    if not _BLUEPRINT_OPS_AVAILABLE:
+        raise BlueprintOpsError("solution_wizard.blueprint_ops is not installed")
+    active = get_active_version(db, session)
+    current = active.content if active else default_blueprint_content("")
+    try:
+        updated = apply_change_ops(current, ops)
+    except ChangeOpError as exc:
+        raise BlueprintOpsError(str(exc)) from exc
+    return add_version(db, session, note=note, content=updated)
+
+
+def restore_version(
+    db: Session,
+    session: WizardSession,
+    *,
+    version: int,
+) -> BlueprintVersion:
+    """Undo/restore (S3-5/#67): copy an earlier version's content forward as
+    a brand-new version. Never rewinds session.active_version onto the old
+    row in place — that would destroy the fact that the bad edit ever
+    happened. Restoring is itself just another tracked, auditable version."""
+    target = get_version(db, session.id, version)
+    if target is None:
+        raise BlueprintOpsError(f"version {version} does not exist for this session")
+    return add_version(
+        db,
+        session,
+        note=f"Restored version {version}",
+        content=dict(target.content),
+    )

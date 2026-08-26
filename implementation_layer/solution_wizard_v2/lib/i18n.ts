@@ -72,6 +72,12 @@ export type Dict = {
   wsBpmnSaving: string;
   wsBpmnSaveError: string;
   wsBpmnSaved: string;
+  wsBpmnUndo: string;
+  wsBpmnUndoing: string;
+  wsBpmnUndone: string;
+  wsBpmnUndoError: string;
+  wsBpmnUndoHint: string;
+  wsBpmnUndoDisabled: string;
   wsBpmnLintBlocked: string;
   wsBpmnLintWarnings: string;
   wsBpmnDialogTitle: string;
@@ -190,6 +196,7 @@ export type Dict = {
   streamFailed: string;
   chatThinking: string;
   chatBusy: string;
+  chatSessionCost: string;
 
   phases: string[];
   gates: { locked: string; pending: string; approved: string; rejected: string };
@@ -255,6 +262,12 @@ const fi: Dict = {
   wsBpmnSaving: "Tallennetaan…",
   wsBpmnSaveError: "Tallennus epäonnistui",
   wsBpmnSaved: "Tallennettu",
+  wsBpmnUndo: "Kumoa",
+  wsBpmnUndoing: "Kumotaan…",
+  wsBpmnUndone: "Kumottu",
+  wsBpmnUndoError: "Kumoaminen epäonnistui",
+  wsBpmnUndoHint: "Palauta versio {version}",
+  wsBpmnUndoDisabled: "Ei aiempaa versiota kumottavaksi",
   wsBpmnLintBlocked: "BPMN-validointi esti tallennuksen (bpmnlint)",
   wsBpmnLintWarnings: "BPMN-varoitukset",
   wsBpmnDialogTitle: "Visuaalinen työnkulku (BPMN)",
@@ -387,6 +400,7 @@ const fi: Dict = {
   chatThinking: "Wizard miettii…",
   chatBusy:
     "Wizard vastaa vielä edelliseen viestiin — hetki, ja lähetä uudelleen.",
+  chatSessionCost: "Tämän session arvioitu kustannus",
 
   phases: [
     "Session start",
@@ -471,6 +485,12 @@ const en: Dict = {
   wsBpmnSaving: "Saving…",
   wsBpmnSaveError: "Save failed",
   wsBpmnSaved: "Saved",
+  wsBpmnUndo: "Undo",
+  wsBpmnUndoing: "Undoing…",
+  wsBpmnUndone: "Undone",
+  wsBpmnUndoError: "Undo failed",
+  wsBpmnUndoHint: "Restore version {version}",
+  wsBpmnUndoDisabled: "No earlier version to undo to",
   wsBpmnLintBlocked: "BPMN validation blocked save (bpmnlint)",
   wsBpmnLintWarnings: "BPMN warnings",
   wsBpmnDialogTitle: "Visual workflow (BPMN)",
@@ -601,6 +621,7 @@ const en: Dict = {
   chatThinking: "The wizard is thinking…",
   chatBusy:
     "The wizard is still finishing the previous reply — please wait a moment and resend.",
+  chatSessionCost: "Estimated cost for this session",
 
   phases: [
     "Session start",

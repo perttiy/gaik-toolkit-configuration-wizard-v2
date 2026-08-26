@@ -77,6 +77,8 @@ class Artifact(BaseModel):
     produced_by: Optional[str] = None
     schema_ref: Optional[str] = None
     overwrite: bool = False
+    # V2 canvas data-object label override (#48); ignored by runtime validators.
+    display_name: Optional[str] = None
 
     @model_validator(mode="after")
     def _check_source_rules(self) -> "Artifact":

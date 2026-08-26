@@ -236,3 +236,22 @@ export async function apiSyncSessionBpmn(id: string, xml: string) {
     body: JSON.stringify({ xml }),
   });
 }
+
+/** S3-4/#66 — structured blueprint change-ops (canvas + future NL-chat tools). */
+export async function apiApplyBlueprintOps(
+  id: string,
+  ops: object[],
+  note = "Blueprint change-ops",
+) {
+  return wizardFetch<ApiSessionDetail>(`/sessions/${id}/blueprint/ops`, {
+    method: "POST",
+    body: JSON.stringify({ ops, note }),
+  });
+}
+
+/** S3-5/#67 — undo/restore: copy an earlier version's content forward as a new version. */
+export async function apiRestoreVersion(id: string, version: number) {
+  return wizardFetch<ApiSessionDetail>(`/sessions/${id}/versions/${version}/restore`, {
+    method: "POST",
+  });
+}
