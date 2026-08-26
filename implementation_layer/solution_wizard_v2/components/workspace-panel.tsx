@@ -7,6 +7,7 @@ import type { Dict } from "@/lib/i18n";
 import { shouldShowBpmnSpike } from "@/lib/bpmn-spike";
 import { BlueprintJsonEditor } from "@/components/blueprint-json-editor";
 import { SolutionPlanView } from "@/components/solution-plan-view";
+import { buildTestCaseProposals } from "@/lib/test-case-proposals";
 
 const BpmnDiagramPanel = dynamic(
   () =>
@@ -211,12 +212,16 @@ export function WorkspacePanel({
   sessionTitle,
   wizardStep,
   blueprint: initialBlueprint,
+  requirementPoints = [],
+  requirementAnswers = [],
   t,
 }: {
   sessionId: string;
   sessionTitle: string;
   wizardStep: number;
   blueprint: Blueprint;
+  requirementPoints?: string[];
+  requirementAnswers?: string[];
   t: Dict;
 }) {
   const [tab, setTab] = useState<Tab>("flow");
@@ -225,6 +230,7 @@ export function WorkspacePanel({
   const [logs, setLogs] = useState<string[]>([]);
   const [pocStatus, setPocStatus] = useState<PocStatus>("idle");
   const baseId = useId();
+  const testProposals = buildTestCaseProposals(requirementPoints, requirementAnswers);
 
   const tabLabels: Record<Tab, string> = {
     flow: t.wsTabFlow,
@@ -339,7 +345,29 @@ export function WorkspacePanel({
 
             {key === "poc" && (
               <div className="h-full flex flex-col min-h-0">
-                <div className="shrink-0 flex items-center gap-3 mb-3">
+                <details className="shrink-0 mb-3 rounded-lg border border-border bg-surface-muted/40 px-3 py-2">
+                  <summary className="cursor-pointer text-sm font-medium text-text-secondary">
+                    {t.testProposalsTitle}
+                    {testProposals.length > 0 ? ` (${testProposals.length})` : ""}
+                  </summary>
+                  <p className="mt-2 text-xs text-text-muted">{t.testProposalsIntro}</p>
+                  {testProposals.length === 0 ? (
+                    <p className="mt-2 text-xs text-text-muted">{t.testProposalsEmpty}</p>
+                  ) : (
+                    <ol className="mt-2.5 space-y-1.5">
+                      {testProposals.map((tc, i) => (
+                        <li key={tc.id} className="text-xs text-text">
+                          <span className="font-semibold text-text-secondary">
+                            {i + 1}. {tc.requirement}
+                          </span>{" "}
+                          <span className="text-text-muted">→ {tc.expectation}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </details>
+
+                <div className="shrink-0 flex items-center gap-3 mb-1">
                   <button
                     type="button"
                     onClick={runPoc}
@@ -361,6 +389,12 @@ export function WorkspacePanel({
                     </span>
                   )}
                 </div>
+
+                {(pocStatus === "success" || pocStatus === "failed") && (
+                  <p className="shrink-0 mb-3 text-sm text-text-secondary">
+                    {pocStatus === "success" ? t.testResultSuccess : t.testResultFailed}
+                  </p>
+                )}
 
                 {logs.length === 0 && pocStatus === "idle" ? (
                   <p className="text-xs text-text-muted">{t.pocIdle}</p>
