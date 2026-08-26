@@ -39,9 +39,7 @@ import httpx
 sys.path.insert(0, str(Path(__file__).parent))
 from golden_conversations import GOLDEN_CONVERSATIONS, GoldenConversation  # noqa: E402
 
-sys.path.insert(
-    0, str(Path(__file__).resolve().parents[2] / "solution_wizard" / "src")
-)
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "solution_wizard" / "src"))
 from solution_wizard.registry import get_registry  # noqa: E402
 
 WIZARD_API_URL = "http://127.0.0.1:8100"

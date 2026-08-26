@@ -178,9 +178,7 @@ def test_drain_silent_drains_a_second_result_message_within_the_grace_window(_se
         _FakeResultMessage(cost_usd=0.02),  # second ResultMessage — true end of bootstrap
     ]
     client = _SlowFakeClient(messages)
-    asyncio.run(
-        agent_service._drain_silent(client, _session, grace_seconds=0.5, max_rounds=3)
-    )
+    asyncio.run(agent_service._drain_silent(client, _session, grace_seconds=0.5, max_rounds=3))
     assert consumed == messages, "all four bootstrap-turn messages must be drained"
     # Both ResultMessages' cost got counted — a stray leaked ResultMessage
     # would otherwise mean the second turn's cost is silently dropped too.

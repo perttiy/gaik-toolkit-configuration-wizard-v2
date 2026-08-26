@@ -185,9 +185,7 @@ def v2_to_v1_dict(v2: dict[str, Any], *, session_id: str = "session") -> dict[st
     has_human_review = any(s.get("type") == "human_review" for s in steps)
     integration_targets = _normalize_integration_targets(v2)
     data_objects = {
-        str(k): str(v)
-        for k, v in dict(v2.get("data_objects") or {}).items()
-        if str(v).strip()
+        str(k): str(v) for k, v in dict(v2.get("data_objects") or {}).items() if str(v).strip()
     }
 
     artifacts, workflow_steps = _synthesize_artifacts_and_links(steps, data_objects)

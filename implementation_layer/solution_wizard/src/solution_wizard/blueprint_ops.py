@@ -180,7 +180,9 @@ def derive_change_ops(
             old = before_by_id[sid]
             new = after_by_id[sid]
             if str(old.get("name") or "") != str(new.get("name") or ""):
-                ops.append({"op": "rename_step", "step_id": sid, "name": str(new.get("name") or "")})
+                ops.append(
+                    {"op": "rename_step", "step_id": sid, "name": str(new.get("name") or "")}
+                )
             # Other field drifts → upsert
             keys = ("type", "description", "component")
             if any(old.get(k) != new.get(k) for k in keys):
