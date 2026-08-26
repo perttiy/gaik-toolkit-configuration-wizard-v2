@@ -47,16 +47,21 @@ test.describe("US-S1-01 session isolation", () => {
   });
 
   test("session progress survives reload for the owning user", async ({ page }) => {
-    const title = `Persist ${Date.now()}`;
+    // Was broken by the gathering-gate feature (commit 54d8394): during
+    // gathering (steps 1-3) "Seuraava vaihe" no longer advances on click —
+    // GatheringAdvanceButton just shows a hint, the agent advances it once
+    // requirements are answered. A freshly created session can no longer
+    // reach step 2 this way, so this now uses "Edellinen" from an existing
+    // fixture past gathering to exercise the same thing the test actually
+    // cares about: does step progress survive a reload.
     await loginAsDev(page, DEV_USERS.primary);
-    await page.locator("#session-title").fill(title);
-    await page.getByRole("button", { name: "Aloita uusi" }).click();
-    await page.waitForURL(/\/sessions\//);
+    await page.goto("/sessions/ses_ui_basics");
+    await expect(page.getByText("VAIHE 6 / 13")).toBeVisible();
 
-    await page.getByRole("button", { name: "Seuraava vaihe →" }).click();
-    await expect(page.getByText("VAIHE 2 / 13")).toBeVisible();
+    await page.getByRole("button", { name: "Edellinen" }).click();
+    await expect(page.getByText("VAIHE 5 / 13")).toBeVisible();
 
     await page.reload();
-    await expect(page.getByText("VAIHE 2 / 13")).toBeVisible();
+    await expect(page.getByText("VAIHE 5 / 13")).toBeVisible();
   });
 });
