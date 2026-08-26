@@ -152,6 +152,11 @@ export type Dict = {
   pocIdle: string;
   pocSuccess: string;
   pocFailed: string;
+  testProposalsTitle: string;
+  testProposalsIntro: string;
+  testProposalsEmpty: string;
+  testResultSuccess: string;
+  testResultFailed: string;
   pocLogStart: string;
   pocLogDeps: string;
   pocLogStep: string;
@@ -365,6 +370,15 @@ const fi: Dict = {
   pocIdle: "PoC:tä ei ole vielä ajettu. Aja se nähdäksesi lokit ja tuloksen.",
   pocSuccess: "Onnistui",
   pocFailed: "Epäonnistui",
+  testProposalsTitle: "Ehdotetut testitapaukset",
+  testProposalsIntro:
+    "Nämä on koottu vaiheissa 1–3 kerätyistä vaatimuksista. Kun ratkaisu ajetaan, tarkista tulos näitä vasten. Tarkemmat laatumittarit (GAIK-toolkitin evaluointikerros) tulevat käyttöön myöhemmissä sprinteissä.",
+  testProposalsEmpty:
+    "Vaatimuksia ei vielä ole kerätty, joten testitapauksia ei voida ehdottaa.",
+  testResultSuccess:
+    "Testi meni läpi: ratkaisu ajoi esimerkkisyötteen loppuun asti ilman virheitä.",
+  testResultFailed:
+    "Testi epäonnistui: ratkaisu ei ajanut loppuun asti. Katso loki alta.",
   pocLogStart: "Käynnistetään eristetty PoC-ympäristö…",
   pocLogDeps: "Asennetaan riippuvuudet…",
   pocLogStep: "Suoritetaan vaihe:",
@@ -605,6 +619,15 @@ const en: Dict = {
   pocIdle: "PoC has not been run yet. Run it to see logs and the result.",
   pocSuccess: "Success",
   pocFailed: "Failed",
+  testProposalsTitle: "Proposed test cases",
+  testProposalsIntro:
+    "These come from the requirements gathered in steps 1–3. When the solution runs, check the result against them. Detailed quality metrics (the GAIK toolkit evaluation layer) arrive in a later sprint.",
+  testProposalsEmpty:
+    "No requirements have been gathered yet, so no test cases can be proposed.",
+  testResultSuccess:
+    "Test passed: the solution ran the sample input through to completion without errors.",
+  testResultFailed:
+    "Test failed: the solution didn't run to completion. See the log below.",
   pocLogStart: "Starting isolated PoC environment…",
   pocLogDeps: "Installing dependencies…",
   pocLogStep: "Running step:",

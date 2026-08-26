@@ -184,6 +184,8 @@ export default async function SessionPage({
                   sessionTitle={session.title}
                   wizardStep={session.step}
                   blueprint={session.blueprint}
+                  requirementPoints={points}
+                  requirementAnswers={answers}
                   t={t}
                 />
               </>
