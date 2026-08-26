@@ -170,6 +170,39 @@ def _normalize_integration_targets(v2: dict[str, Any]) -> list[str]:
     return out
 
 
+def _gateways_to_decision_points(v2: dict[str, Any]) -> list[dict[str, Any]]:
+    """V2 canvas gateways (synced with topology by bpmn_sync._sync_gateways) → V1
+    ``business_process.decision_points``, so regenerating the BPMN reconstructs the
+    same branch/parallel-fork structure instead of only renaming the auto-derived
+    approval gateway (S3-1). Auto-derived approval gateways (``Gateway_approve_*``)
+    are excluded — those come back from ``_enrich_approval`` via the human_review
+    step itself, so re-adding them here would generate the gateway twice.
+    """
+    out: list[dict[str, Any]] = []
+    for g in list(v2.get("gateways") or []):
+        if not isinstance(g, dict):
+            continue
+        gid = str(g.get("id") or "")
+        after = str(g.get("after") or "")
+        branches = [
+            {"condition": str(b.get("condition") or ""), "target": str(b.get("target") or "")}
+            for b in list(g.get("outgoing") or [])
+            if isinstance(b, dict) and b.get("target")
+        ]
+        if not gid or gid.startswith("Gateway_approve_") or not after or not branches:
+            continue
+        out.append(
+            {
+                "id": gid,
+                "name": str(g.get("name") or "").strip() or "Decision",
+                "after": after,
+                "type": "parallel" if g.get("type") == "parallel" else "exclusive",
+                "branches": branches,
+            }
+        )
+    return out
+
+
 def v2_to_v1_dict(v2: dict[str, Any], *, session_id: str = "session") -> dict[str, Any]:
     """Build a minimal valid V1 blueprint dict from V2 UI blueprint content."""
     name = (v2.get("name") or "Session").strip() or "Session"
@@ -255,5 +288,6 @@ def v2_to_v1_dict(v2: dict[str, Any], *, session_id: str = "session") -> dict[st
                     "default_lane_for": [],
                 },
             ],
+            "decision_points": _gateways_to_decision_points(v2),
         },
     }

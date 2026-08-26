@@ -805,14 +805,23 @@ class _BpmnBuilder:
             if not after_node:
                 continue
             xg = f"Gateway_decision_{_safe(dp.id)}"
-            self.nodes[xg] = _Node(
-                xg, "bpmn:exclusiveGateway", dp.name, self.nodes[after_node].lane, "gateway"
-            )
+            tag = "bpmn:parallelGateway" if dp.type == "parallel" else "bpmn:exclusiveGateway"
+            self.nodes[xg] = _Node(xg, tag, dp.name, self.nodes[after_node].lane, "gateway")
             self._map(xg, "decision_point", f"business_process.decision_points[{i}]")
-            # reroute the after_node's forward (non-loop) edges through the gateway
             outgoing = [f for f in self.flows if f.src == after_node and not f.is_loop]
-            for f in outgoing:
-                f.src = xg
+            if dp.branches:
+                # Explicit branches (S3-1, from V2 canvas gateways) are a complete
+                # outgoing set, not just an alternate path alongside the existing
+                # chain — drop the old default edge instead of keeping it, or a
+                # branch that targets the same node the chain already continued to
+                # would render as two parallel sequence flows to the same target.
+                for f in outgoing:
+                    self.flows.remove(f)
+            else:
+                # No explicit branches: fall back to rerouting the existing
+                # forward edge(s) through the gateway (pass-through gateway).
+                for f in outgoing:
+                    f.src = xg
             self._add_flow(after_node, xg)
             for br in dp.branches:
                 tgt = (

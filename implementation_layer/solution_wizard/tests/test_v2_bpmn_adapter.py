@@ -308,3 +308,156 @@ def test_sync_snapshots_gateways():
     synced = sync_v2_blueprint_from_bpmn_xml(v2, xml)
     assert synced.get("gateways")
     assert any(g.get("name") == "Approved?" for g in synced["gateways"])
+
+
+# -- S3-1: gateway topology round-trip (branch/parallel-fork structure) -----
+
+
+def _linear_v2():
+    return {
+        "name": "Demo",
+        "description": "",
+        "goal": "",
+        "steps": [
+            {"id": "a", "name": "Collect", "type": "io"},
+            {"id": "b", "name": "Classify", "type": "ai"},
+            {"id": "c", "name": "Notify", "type": "ai"},
+        ],
+    }
+
+
+def test_gateway_json_regenerates_exclusive_branch_topology():
+    v2 = {
+        **_linear_v2(),
+        "gateways": [
+            {
+                "id": "Gateway_route",
+                "name": "High risk?",
+                "type": "exclusive",
+                "after": "b",
+                "outgoing": [
+                    {"condition": "Yes", "target": "c"},
+                    {"condition": "No", "target": "end"},
+                ],
+            }
+        ],
+    }
+    v1 = v2_to_v1_dict(v2, session_id="s")
+    dps = v1["business_process"]["decision_points"]
+    assert len(dps) == 1
+    assert dps[0]["after"] == "b"
+    assert dps[0]["type"] == "exclusive"
+    assert len(dps[0]["branches"]) == 2
+
+    xml = generate_bpmn(Blueprint.model_validate(v1))
+    assert 'id="Gateway_decision_Gateway_route"' in xml
+    assert 'name="High risk?"' in xml
+    # Exactly the two authored branches leave the gateway — no leftover/duplicate
+    # edge from the pre-branch linear chain (b -> c) alongside them.
+    assert xml.count('sourceRef="Gateway_decision_Gateway_route"') == 2
+    assert 'sourceRef="Gateway_decision_Gateway_route" targetRef="Activity_c"' in xml
+    assert 'name="Yes" sourceRef="Gateway_decision_Gateway_route"' in xml
+    assert 'name="No" sourceRef="Gateway_decision_Gateway_route"' in xml
+    # The step the gateway follows now flows into the gateway, not straight to c.
+    assert 'sourceRef="Activity_b" targetRef="Gateway_decision_Gateway_route"' in xml
+
+
+def test_gateway_json_regenerates_parallel_fork():
+    v2 = {
+        **_linear_v2(),
+        "gateways": [
+            {
+                "id": "Gateway_fork",
+                "name": "Fan out",
+                "type": "parallel",
+                "after": "a",
+                "outgoing": [
+                    {"condition": "", "target": "b"},
+                    {"condition": "", "target": "c"},
+                ],
+            }
+        ],
+    }
+    v1 = v2_to_v1_dict(v2, session_id="s")
+    assert v1["business_process"]["decision_points"][0]["type"] == "parallel"
+    xml = generate_bpmn(Blueprint.model_validate(v1))
+    assert 'bpmn:parallelGateway id="Gateway_decision_Gateway_fork"' in xml
+    assert xml.count('sourceRef="Gateway_decision_Gateway_fork"') == 2
+
+
+def test_gateway_without_topology_is_ignored():
+    """A gateway snapshot missing `after` or `outgoing` (e.g. best-effort sync
+    couldn't resolve it) must not produce a broken/empty decision point."""
+    v2 = {
+        **_linear_v2(),
+        "gateways": [{"id": "Gateway_orphan", "name": "?", "type": "exclusive"}],
+    }
+    v1 = v2_to_v1_dict(v2, session_id="s")
+    assert v1["business_process"]["decision_points"] == []
+
+
+def test_approval_gateway_not_duplicated_as_decision_point():
+    """A synced canvas snapshot naturally includes the auto-derived approval
+    gateway too (it's a real exclusiveGateway on the canvas) — it must not also
+    become a decision point, or the review step would render two gateways."""
+    v2 = {
+        "name": "Demo",
+        "description": "",
+        "goal": "",
+        "steps": [
+            {"id": "up", "name": "Upload", "type": "io"},
+            {"id": "rev", "name": "Review", "type": "human_review"},
+        ],
+        "gateways": [
+            {
+                "id": "Gateway_approve_rev",
+                "name": "Approved?",
+                "type": "exclusive",
+                "after": "rev",
+                "outgoing": [{"condition": "Yes", "target": "end"}],
+            }
+        ],
+    }
+    v1 = v2_to_v1_dict(v2, session_id="s")
+    assert v1["business_process"]["decision_points"] == []
+    xml = generate_bpmn(Blueprint.model_validate(v1))
+    # only the one gateway element from _enrich_approval (open-tag count, since a
+    # gateway with children renders as a tag pair, not self-closing)
+    assert xml.count('<bpmn:exclusiveGateway id="') == 1
+
+
+def test_full_canvas_round_trip_preserves_gateway_topology():
+    """End-to-end: generate → hand-edit the canvas XML to add a real branching
+    gateway → sync back to V2 JSON → regenerate — the branch survives."""
+    v2 = _linear_v2()
+    xml = generate_bpmn(Blueprint.model_validate(v2_to_v1_dict(v2, session_id="s")))
+    # Splice in an exclusive gateway between Classify (b) and Notify (c): the
+    # generator's linear chain already has `sourceRef="Activity_b"
+    # targetRef="Activity_c"` — replace that one flow with a small gateway
+    # fragment carrying two branches, as if drawn on the canvas.
+    original_flow = None
+    for line in xml.splitlines():
+        if 'sourceRef="Activity_b"' in line and 'targetRef="Activity_c"' in line:
+            original_flow = line.strip()
+            break
+    assert original_flow is not None
+    edited = xml.replace(
+        original_flow,
+        '<bpmn:exclusiveGateway id="Gateway_route" name="High risk?" />'
+        '<bpmn:sequenceFlow id="Flow_gw_in" sourceRef="Activity_b" targetRef="Gateway_route" />'
+        '<bpmn:sequenceFlow id="Flow_gw_yes" name="Yes" sourceRef="Gateway_route" '
+        'targetRef="Activity_c" />'
+        '<bpmn:sequenceFlow id="Flow_gw_no" name="No" sourceRef="Gateway_route" '
+        'targetRef="EndEvent_success" />',
+    )
+    synced = sync_v2_blueprint_from_bpmn_xml(v2, edited)
+    gw = next(g for g in synced["gateways"] if g["id"] == "Gateway_route")
+    assert gw["after"] == "b"
+    assert {(b["condition"], b["target"]) for b in gw["outgoing"]} == {
+        ("Yes", "c"),
+        ("No", "end"),
+    }
+
+    v1_again = v2_to_v1_dict(synced, session_id="s")
+    regenerated = generate_bpmn(Blueprint.model_validate(v1_again))
+    assert regenerated.count('sourceRef="Gateway_decision_Gateway_route"') == 2
