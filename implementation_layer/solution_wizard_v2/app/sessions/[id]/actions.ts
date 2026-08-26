@@ -49,6 +49,11 @@ export async function requestChanges(formData: FormData) {
   if (!(await requireOwnedSession(id))) return;
   const feedback = ((formData.get("feedback") as string) ?? "").trim();
   const { t } = await getI18n();
-  await requestGateChanges(id, feedback, t.changesRequested);
+  // The backend rejects an empty user_content (min_length 1) and postMessage
+  // swallows that failure, so an empty feedback here would silently drop both
+  // the request and its acknowledgement. Falling back to a placeholder message
+  // keeps the acknowledgement recorded either way (affects Gate 1 and the
+  // shared Gate 2/3/4 bar, both of which call this action).
+  await requestGateChanges(id, feedback || t.changesRequestedFallback, t.changesRequested);
   refresh(id);
 }

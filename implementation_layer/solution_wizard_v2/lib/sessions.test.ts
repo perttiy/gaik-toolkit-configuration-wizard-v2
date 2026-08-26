@@ -239,6 +239,40 @@ describe("sessions.ts — wizard_api mode (WIZARD_API_URL set)", () => {
     expect(apiFns.apiPatchSession).not.toHaveBeenCalled();
   });
 
+  // S3-3: Gate 2 (step 9) uses the same generic approve/reject/request-changes
+  // path as Gate 1 — these pin that down explicitly rather than relying on
+  // Gate 1 coverage to stand in for every gate.
+  it("approveGate patches gate_statuses and advances past Gate 2 (step 9)", async () => {
+    apiFns.apiGetSession
+      .mockResolvedValueOnce(apiDetail({ step: 9, gate_statuses: {} }))
+      .mockResolvedValueOnce(apiDetail({ step: 9, gate_statuses: { gate_2: "approved" } }));
+    await approveGate("s1");
+    expect(apiFns.apiPatchSession).toHaveBeenCalledWith("s1", {
+      gate_statuses: { gate_2: "approved" },
+    });
+    expect(apiFns.apiPatchSession).toHaveBeenCalledWith("s1", { step: 10 });
+  });
+
+  it("rejectGate at Gate 2 patches gate_statuses to rejected and reactivates", async () => {
+    apiFns.apiGetSession.mockResolvedValue(apiDetail({ step: 9 }));
+    await rejectGate("s1");
+    expect(apiFns.apiPatchSession).toHaveBeenCalledWith("s1", {
+      gate_statuses: { gate_2: "rejected" },
+      metadata: { status: "active" },
+    });
+  });
+
+  it("requestGateChanges at Gate 2 steps back to the BPMN canvas step (8)", async () => {
+    apiFns.apiGetSession.mockResolvedValue(apiDetail({ step: 9 }));
+    apiFns.apiPostMessages.mockResolvedValue(apiDetail({ step: 8 }));
+    await requestGateChanges("s1", "gateways look wrong", "got it");
+    expect(apiFns.apiPatchSession).toHaveBeenCalledWith("s1", {
+      step: 8,
+      metadata: { status: "active" },
+    });
+    expect(apiFns.apiPostMessages).toHaveBeenCalledWith("s1", "gateways look wrong", "got it");
+  });
+
   it("rejectGate patches gate_statuses to rejected and reactivates", async () => {
     apiFns.apiGetSession.mockResolvedValue(apiDetail({ step: 4 }));
     await rejectGate("s1");
