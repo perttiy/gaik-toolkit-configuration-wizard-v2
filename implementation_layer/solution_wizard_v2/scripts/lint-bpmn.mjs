@@ -26,15 +26,44 @@ const bpmnlint = require("bpmnlint");
 const NodeResolver =
   require("bpmnlint/lib/resolver/node-resolver").default ||
   require("bpmnlint/lib/resolver/node-resolver");
-const recommended = require("bpmnlint/config/recommended");
 const Linter = bpmnlint.Linter || bpmnlint.default;
+
+// GAIK modeling-guideline rules (S3-2 / #64) — an in-repo plugin, not an npm
+// package, so it's resolved directly here rather than through node_modules.
+const gaikPlugin = require(path.join(__dirname, "bpmnlint-plugin-gaik", "index.js"));
+const GAIK_PKG = "bpmnlint-plugin-gaik";
+
+const nodeResolver = new NodeResolver({ require });
+const resolver = {
+  resolveRule(pkg, ruleName) {
+    if (pkg === GAIK_PKG) {
+      const rule = gaikPlugin.rules[ruleName];
+      if (!rule) {
+        throw new Error(`unknown rule <${ruleName}> from <${GAIK_PKG}>`);
+      }
+      return rule;
+    }
+    return nodeResolver.resolveRule(pkg, ruleName);
+  },
+  resolveConfig(pkg, configName) {
+    if (pkg === GAIK_PKG) {
+      const config = gaikPlugin.configs[configName];
+      if (!config) {
+        throw new Error(`unknown config <${configName}> from <${GAIK_PKG}>`);
+      }
+      return config;
+    }
+    return nodeResolver.resolveConfig(pkg, configName);
+  },
+};
+
+const config = {
+  extends: ["bpmnlint:recommended", "plugin:gaik/recommended"],
+};
 
 const moddle = new BpmnModdle();
 const { rootElement } = await moddle.fromXML(xml);
-const linter = new Linter({
-  config: recommended,
-  resolver: new NodeResolver({ require }),
-});
+const linter = new Linter({ config, resolver });
 const reports = await linter.lint(rootElement);
 
 const issues = [];
