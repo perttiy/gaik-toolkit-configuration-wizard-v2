@@ -47,6 +47,50 @@ describe("lintBpmnXml (#47)", () => {
     expect(result.ok).toBe(true);
   });
 
+  it("flags GAIK convention violations as warnings, not errors (S3-2)", async () => {
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+  id="Definitions_1" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:process id="Process_1" isExecutable="true">
+    <bpmn:startEvent id="StartEvent_1" name="Start">
+      <bpmn:outgoing>Flow_1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:task id="Activity_1" name="Process data">
+      <bpmn:incoming>Flow_1</bpmn:incoming>
+      <bpmn:outgoing>Flow_2</bpmn:outgoing>
+    </bpmn:task>
+    <bpmn:exclusiveGateway id="Gateway_1" name="Looks fine">
+      <bpmn:incoming>Flow_2</bpmn:incoming>
+      <bpmn:outgoing>Flow_3</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+    <bpmn:dataObjectReference id="DataObjectRef_1" name="Extract Fields" dataObjectRef="DataObject_1" />
+    <bpmn:dataObject id="DataObject_1" />
+    <bpmn:endEvent id="EndEvent_1" name="End">
+      <bpmn:incoming>Flow_3</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_1" sourceRef="StartEvent_1" targetRef="Activity_1" />
+    <bpmn:sequenceFlow id="Flow_2" sourceRef="Activity_1" targetRef="Gateway_1" />
+    <bpmn:sequenceFlow id="Flow_3" sourceRef="Gateway_1" targetRef="EndEvent_1" />
+  </bpmn:process>
+</bpmn:definitions>`;
+    const result = await lintBpmnXml(xml);
+    const gaikWarnings = result.warnings.filter((w) => w.rule.startsWith("gaik/"));
+    expect(gaikWarnings.map((w) => w.rule).sort()).toEqual([
+      "gaik/data-object-is-data",
+      "gaik/gateway-question-form",
+      "gaik/vague-task-names",
+    ]);
+    // GAIK rules never appear in errors — they're warn-first (S3-2 scope).
+    expect(result.errors.some((e) => e.rule.startsWith("gaik/"))).toBe(false);
+  });
+
+  it("wizard-generated BPMN also passes the GAIK rules (S3-2)", async () => {
+    const xml = generatedWizardXml();
+    const result = await lintBpmnXml(xml);
+    const gaikWarnings = result.warnings.filter((w) => w.rule.startsWith("gaik/"));
+    expect(gaikWarnings).toEqual([]);
+  });
+
   it("lints a customer reference BPMN without crashing", async () => {
     // Customer BPMN lives under gitignored docs/6.7_demo/ — skip in CI/clean clones.
     const ref = resolve(
