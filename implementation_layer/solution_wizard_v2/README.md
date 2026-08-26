@@ -73,10 +73,23 @@ middleware.ts         Next.js middleware -kytkentä
 
 ```bash
 npm run test          # unit (vitest)
-npm run test:e2e      # UI (Playwright)
-npm run test:all      # molemmat
+npm run test:e2e      # UI (Playwright) — paikallinen mock-tila
+npm run test:e2e:rahti  # savutesti (e2e/smoke.spec.ts) Rahti dev -ympäristöä vasten
+npm run test:all      # unit + paikallinen e2e
 ESLINT_USE_FLAT_CONFIG=false npm run lint
 ```
+
+`test:e2e:rahti` ajaa vain `e2e/smoke.spec.ts`:n (kirjautuminen, session-listaus,
+uuden session luonti) — ei koko pakettia, koska suurin osa muista e2e-testeistä
+olettaa paikallisen mock-tilan siemendataa (esim. "Customer service chatbot"),
+jota Rahtin oikealla wizard_api+Postgres-backendillä ei ole. Osoite ja
+kirjautumistavat: `PLAYWRIGHT_BASE_URL` + `PLAYWRIGHT_SKIP_WEBSERVER=true`
+(katso `package.json`). CI ajaa saman savutestin erikseen —
+[`.github/workflows/e2e-rahti.yml`](../../.github/workflows/e2e-rahti.yml) —
+manuaalisesti (`workflow_dispatch`) tai push:lla `dev`-haaraan; huomaa että
+Rahti ei redeployaa automaattisesti pushista (S8-9 ei vielä tehty), joten
+push-triggeri testaa mitä Rahtilla *on juuri nyt käynnissä*, ei pushattua
+committia — redeployaa ensin manuaalisesti, aja sitten workflow uudelleen.
 
 Koko stack + CI: [`../WIZARD-DEV.md`](../WIZARD-DEV.md). Tietoturva: [`docs/SECURITY.md`](docs/SECURITY.md).
 
