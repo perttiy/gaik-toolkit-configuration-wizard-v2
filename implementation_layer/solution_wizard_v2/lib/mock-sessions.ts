@@ -382,6 +382,116 @@ function buildSeedSessions(): WizardSession[] {
       { id: "output", name: "Shortlist", type: "io", description: "Selected candidates forward" },
     ],
   }),
+  // -- E2E-only fixtures below: dedicated, isolated sessions so gate-review
+  // tests never mutate the three narrative fixtures above (and vice versa).
+  {
+    ...seedSession(
+      "ses_gate1_ready",
+      DEV_OWNER,
+      "Gate 1 — ready to approve (e2e fixture)",
+      4,
+      1,
+      0,
+      {
+        name: "Gate 1 ready fixture",
+        description: "",
+        goal: "",
+        steps: [
+          { id: "input", name: "Input", type: "io" },
+          { id: "process", name: "Process", type: "ai", component: "LLM" },
+        ],
+      },
+    ),
+    businessContext: {
+      currentProcess: "Three people manually review invoices every morning.",
+      painPoints: ["Slow", "Error-prone"],
+      intendedUsers: ["Finance team"],
+      reviewers: ["Finance lead"],
+      expectedValue: ["Faster processing", "Fewer manual errors"],
+      knowledgeProcesses: ["Invoice review"],
+      domain: "Finance",
+    },
+    assumptions: [
+      {
+        id: "a1",
+        text: "Invoices arrive as PDF email attachments.",
+        status: "confirmed",
+        impact: "low",
+      },
+      {
+        id: "a2",
+        text: "Currency is always EUR.",
+        status: "unconfirmed",
+        impact: "medium",
+      },
+    ],
+  },
+  // businessContext intentionally omitted — approve must stay disabled.
+  seedSession(
+    "ses_gate1_blocked",
+    DEV_OWNER,
+    "Gate 1 — missing context (e2e fixture)",
+    4,
+    1,
+    0,
+    {
+      name: "Gate 1 blocked fixture",
+      description: "",
+      goal: "",
+      steps: [{ id: "input", name: "Input", type: "io" }],
+    },
+  ),
+  seedSession(
+    "ses_gate2_pending",
+    DEV_OWNER,
+    "Gate 2 — pending review (e2e fixture)",
+    9,
+    1,
+    0,
+    {
+      name: "Gate 2 fixture",
+      description: "",
+      goal: "",
+      steps: [
+        { id: "input", name: "Input", type: "io" },
+        { id: "process", name: "Process", type: "ai", component: "LLM" },
+      ],
+    },
+  ),
+  seedSession(
+    "ses_ui_basics",
+    DEV_OWNER,
+    "UI basics (e2e fixture)",
+    6,
+    1,
+    0,
+    {
+      name: "UI basics fixture",
+      description: "",
+      goal: "",
+      steps: [
+        { id: "input", name: "Input", type: "io" },
+        { id: "process", name: "Process", type: "ai", component: "LLM" },
+      ],
+    },
+    [
+      {
+        id: "msg_md_1",
+        role: "user",
+        content: "What components are involved?",
+        createdAt: new Date(0).toISOString(),
+      },
+      {
+        id: "msg_md_2",
+        role: "assistant",
+        // Markdown fixture: bold, a list item, and inline code — checks
+        // renderMarkdown() actually produces HTML, not raw *­/`-`/`` ` ``.
+        content:
+          "Here's what's involved:\n\n- **Component A** handles intake\n- Component B does `lookup(id)`\n",
+        createdAt: new Date(1).toISOString(),
+      },
+    ],
+  ),
   ];
 }
 
