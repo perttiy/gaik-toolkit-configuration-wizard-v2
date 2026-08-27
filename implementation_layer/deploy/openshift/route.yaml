@@ -16,6 +16,9 @@ metadata:
     haproxy.router.openshift.io/response-buffering: "off"
     haproxy.router.openshift.io/disable-cookies: "true"
     haproxy.router.openshift.io/proxy-body-size: 50m
+    # HSTS at the edge router (covers router error pages too). No preload on the
+    # shared *.2.rahtiapp.fi domain. App-level HSTS is handled here instead.
+    haproxy.router.openshift.io/hsts_header: "max-age=31536000;includeSubDomains"
 spec:
   to:
     kind: Service
