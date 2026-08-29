@@ -1,9 +1,19 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { ChatMessage } from "@/lib/mock-sessions";
 import { ChatPanel } from "./chat-panel";
 import { RobotHex } from "./robot-avatar";
+
+const MIN_WIDTH_PX = 320;
+const MAX_WIDTH_PX = 720;
+const DEFAULT_WIDTH_PX = 384; // matches --width-chat
+const DEFAULT_WIDE_WIDTH_PX = 512; // matches --width-chat-wide
+const STORAGE_KEY = "wizardv2-chat-width-px";
+
+function clampWidth(px: number): number {
+  return Math.min(MAX_WIDTH_PX, Math.max(MIN_WIDTH_PX, px));
+}
 
 export function ChatDock({
   sessionId,
@@ -46,10 +56,62 @@ export function ChatDock({
   const [chatInput, setChatInput] = useState("");
   const panelId = useId();
 
+  // User-resizable width (#2 — customer feedback: no way to widen the chat panel,
+  // had to horizontal-scroll to read messages). null = no manual override yet, use
+  // the step-driven default (wide/normal). Read from localStorage lazily so SSR and
+  // the client's first render agree (localStorage isn't available server-side).
+  const [customWidthPx, setCustomWidthPx] = useState<number | null>(null);
+  const dragStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
+
+  // Runs after hydration, so the first client render matches SSR (both start at
+  // the step-driven default) and this only adjusts width once mounted.
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(STORAGE_KEY);
+      if (saved) setCustomWidthPx(clampWidth(Number(saved)));
+    } catch {
+      // localStorage unavailable (private mode, etc.) — fall back to defaults.
+    }
+  }, []);
+
   // Soft navigations keep this client tree mounted — follow step-driven default.
   useEffect(() => {
     setOpen(defaultOpen);
   }, [defaultOpen]);
+
+  const defaultWidthPx = wide ? DEFAULT_WIDE_WIDTH_PX : DEFAULT_WIDTH_PX;
+  const widthPx = customWidthPx ?? defaultWidthPx;
+
+  function startDrag(clientX: number) {
+    dragStateRef.current = { startX: clientX, startWidth: widthPx };
+
+    function onMove(e: PointerEvent) {
+      const state = dragStateRef.current;
+      if (!state) return;
+      // Panel sits on the right edge — dragging left (negative dx) grows it.
+      const next = clampWidth(state.startWidth - (e.clientX - state.startX));
+      setCustomWidthPx(next);
+    }
+
+    function onUp() {
+      dragStateRef.current = null;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      setCustomWidthPx((current) => {
+        if (current !== null) {
+          try {
+            window.localStorage.setItem(STORAGE_KEY, String(current));
+          } catch {
+            // ignore — resize still works this session, just won't persist
+          }
+        }
+        return current;
+      });
+    }
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  }
 
   return (
     <aside
@@ -57,14 +119,33 @@ export function ChatDock({
       aria-label={chatTitle}
       data-testid="chat-dock"
       data-chat-open={open ? "true" : "false"}
-      className={`chat-bg relative shrink-0 border-l border-border flex flex-col min-h-0 transition-[width] duration-200 motion-reduce:transition-none ${
-        open
-          ? wide
-            ? "w-[var(--width-chat-wide)]"
-            : "w-[var(--width-chat)]"
-          : "w-[var(--width-chat-rail)]"
+      style={open ? { width: `${widthPx}px` } : undefined}
+      className={`chat-bg relative shrink-0 border-l border-border flex flex-col min-h-0 ${
+        open ? "" : "w-[var(--width-chat-rail)] transition-[width] duration-200 motion-reduce:transition-none"
       }`}
     >
+      {open && (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={`${chatTitle} — resize`}
+          aria-valuenow={widthPx}
+          aria-valuemin={MIN_WIDTH_PX}
+          aria-valuemax={MAX_WIDTH_PX}
+          tabIndex={0}
+          data-testid="chat-dock-resize-handle"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            startDrag(e.clientX);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowLeft") setCustomWidthPx(clampWidth(widthPx + 16));
+            if (e.key === "ArrowRight") setCustomWidthPx(clampWidth(widthPx - 16));
+          }}
+          className="absolute left-0 top-0 z-10 h-full w-1.5 -translate-x-px cursor-col-resize touch-none hover:bg-brand/40 active:bg-brand/60"
+        />
+      )}
+
       <button
         type="button"
         data-testid="chat-dock-toggle"
@@ -111,3 +192,4 @@ export function ChatDock({
     </aside>
   );
 }
+

@@ -47,6 +47,9 @@ export function isBpmnVisualPhase(step: number): boolean {
   return step >= BPMN_VISUAL_STEP;
 }
 
+/** 1-based step for the PoC phase — workspace panel auto-follows here on chat progress. */
+export const POC_STEP = PHASES.indexOf("PoC") + 1;
+
 export type BlueprintVersion = {
   version: number;
   createdAt: string;

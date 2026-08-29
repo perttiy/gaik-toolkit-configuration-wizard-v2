@@ -1,8 +1,9 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { Blueprint, BlueprintStepType } from "@/lib/mock-sessions";
+import { nextTabForStepChange } from "@/lib/workspace-tab-follow";
 import type { Dict } from "@/lib/i18n";
 import { shouldShowBpmnSpike } from "@/lib/bpmn-spike";
 import { BlueprintJsonEditor } from "@/components/blueprint-json-editor";
@@ -225,6 +226,19 @@ export function WorkspacePanel({
   const [logs, setLogs] = useState<string[]>([]);
   const [pocStatus, setPocStatus] = useState<PocStatus>("idle");
   const baseId = useId();
+
+  // Chat runs its own turns (router.refresh() after each message) and can carry the
+  // session past a milestone — BPMN generated, PoC reached — without the user ever
+  // touching this panel. Left alone, the tab just sits wherever it was clicked last, so
+  // a finished PoC could go completely unseen (raised directly by a customer reviewer:
+  // "the chat and this user interface are not in sync"). See lib/workspace-tab-follow.ts
+  // for the actual milestone logic.
+  const prevStepRef = useRef(wizardStep);
+  useEffect(() => {
+    const next = nextTabForStepChange(prevStepRef.current, wizardStep);
+    if (next) setTab(next);
+    prevStepRef.current = wizardStep;
+  }, [wizardStep]);
 
   const tabLabels: Record<Tab, string> = {
     flow: t.wsTabFlow,
