@@ -41,6 +41,14 @@ spec:
                   key: database-url
             - name: WIZARD_SESSION_OUTPUT_ROOT
               value: /data/sessions
+            # Service token (#135): every endpoint except /health requires the
+            # X-Wizard-Service-Token header. Same value must be set on the web
+            # deployment so its server-side proxy can present it.
+            - name: WIZARD_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: wizard-v2-token
+                  key: WIZARD_API_TOKEN
             # --- Live agent auth: Claude Agent SDK via Azure Foundry ----------
             # optional:true so the pod still starts before the secret is filled;
             # the agent chat endpoint just won't work until these are set.

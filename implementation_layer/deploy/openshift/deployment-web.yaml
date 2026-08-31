@@ -39,6 +39,14 @@ spec:
                   name: wizard-v2-web
                   key: NEXT_SERVER_ACTIONS_ENCRYPTION_KEY
                   optional: true
+            # Service token (#135): the server-side proxy presents this as the
+            # X-Wizard-Service-Token header on every call to wizard-v2-api.
+            # Must match the api's WIZARD_API_TOKEN.
+            - name: WIZARD_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: wizard-v2-token
+                  key: WIZARD_API_TOKEN
           resources:
             requests:
               cpu: 100m
