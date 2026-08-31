@@ -66,7 +66,7 @@ export function BlueprintJsonEditor({
 }: {
   sessionId: string;
   blueprint: Blueprint;
-  onSaved: (blueprint: Blueprint) => void;
+  onSaved: (blueprint: Blueprint, activeVersion?: number) => void;
   t: Dict;
 }) {
   const [draft, setDraft] = useState<Blueprint>(() => structuredClone(blueprint));
@@ -239,8 +239,8 @@ export function BlueprintJsonEditor({
         }),
       });
       if (!res.ok) throw new Error("save failed");
-      const data = (await res.json()) as { blueprint: Blueprint };
-      onSaved(data.blueprint);
+      const data = (await res.json()) as { blueprint: Blueprint; activeVersion?: number };
+      onSaved(data.blueprint, data.activeVersion);
       setDraft(structuredClone(data.blueprint));
       setJsonText(JSON.stringify(data.blueprint, null, 2));
       setSavedFlash(true);

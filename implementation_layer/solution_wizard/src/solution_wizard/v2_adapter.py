@@ -89,13 +89,18 @@ def _infer_artifact(
 
 def _synthesize_artifacts_and_links(
     steps: list[dict[str, Any]],
+    data_objects: dict[str, str] | None = None,
 ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     """Create V1 artifacts + wire step inputs/outputs so BPMN gets data objects.
 
     V2 blueprints only have ordered steps. We invent one outgoing artifact per
-    step using official-style data names (Audio File, Transcript, …) so the
-    generator can emit guide-compliant data objects and associations.
+    step using official-style data names so the generator can emit
+    guide-compliant data objects and associations.
+
+    When ``data_objects`` contains a label for the synthesized artifact id, it is
+    stored as ``display_name`` so regenerate honors canvas renames (#48).
     """
+    labels = dict(data_objects or {})
     artifacts: dict[str, Any] = {}
     workflow_steps: list[dict[str, Any]] = []
     used_ids: set[str] = set()
@@ -126,6 +131,8 @@ def _synthesize_artifacts_and_links(
                 "produced_by": sid,
                 "final_output": bool(is_last),
             }
+        if art_id in labels and str(labels[art_id]).strip():
+            artifacts[art_id]["display_name"] = str(labels[art_id]).strip()
 
         ws: dict[str, Any] = {
             "id": sid,
@@ -177,8 +184,13 @@ def v2_to_v1_dict(v2: dict[str, Any], *, session_id: str = "session") -> dict[st
     steps = list(v2.get("steps") or [])
     has_human_review = any(s.get("type") == "human_review" for s in steps)
     integration_targets = _normalize_integration_targets(v2)
+    data_objects = {
+        str(k): str(v)
+        for k, v in dict(v2.get("data_objects") or {}).items()
+        if str(v).strip()
+    }
 
-    artifacts, workflow_steps = _synthesize_artifacts_and_links(steps)
+    artifacts, workflow_steps = _synthesize_artifacts_and_links(steps, data_objects)
 
     building_blocks = sorted(
         {
@@ -191,6 +203,17 @@ def v2_to_v1_dict(v2: dict[str, Any], *, session_id: str = "session") -> dict[st
     # Prefer role-like labels from step context when available.
     intended_users = ["Business User"]
     reviewers = ["Reviewer"] if has_human_review else []
+
+    gateway_overrides = [
+        {
+            "id": str(g.get("id") or ""),
+            "name": str(g.get("name") or ""),
+            "type": str(g.get("type") or "exclusive"),
+            "outgoing": list(g.get("outgoing") or []),
+        }
+        for g in list(v2.get("gateways") or [])
+        if isinstance(g, dict) and g.get("id")
+    ]
 
     return {
         "blueprint_version": "1.0",
@@ -255,5 +278,9 @@ def v2_to_v1_dict(v2: dict[str, Any], *, session_id: str = "session") -> dict[st
                     "default_lane_for": [],
                 },
             ],
+        },
+        "visualizations": {
+            "data_object_labels": data_objects,
+            "gateway_overrides": gateway_overrides,
         },
     }
