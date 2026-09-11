@@ -64,6 +64,37 @@ test.describe("#126 Gate 1 objections carry a reason (stack)", () => {
     await expect(page.getByText(/Muutospyyntö kirjattu/)).toBeVisible();
   });
 
+  // Both objections in one session, in a row — the demo recording hit this and
+  // the second one appeared to do nothing (#126 follow-up).
+  test("a reject right after a change request still records", async ({ page, request }) => {
+    test.setTimeout(120_000);
+
+    await loginAsDev(page, DEV_USERS.primary);
+    await page.locator("#session-title").fill(`Gate1 both ${Date.now()}`);
+    await page.getByRole("button", { name: "Aloita uusi" }).click();
+    await page.waitForURL(/\/sessions\//, { timeout: 20_000 });
+    const id = sessionIdFromPath(page.url());
+    await setApiSessionStep(request, id, 4);
+    await page.reload({ waitUntil: "domcontentloaded" });
+
+    await page.getByText("Pyydä muutoksia tai hylkää").click();
+    const first = "Syötemuoto on väärä.";
+    await page.getByLabel("Mitä pitää muuttaa? (pakollinen)").fill(first);
+    await page.getByRole("button", { name: "Pyydä muutoksia" }).click();
+    await expect(page.getByText(first)).toBeVisible({ timeout: 15_000 });
+
+    const second = "Eivät vastaa prosessia, hylätään.";
+    const reason = page.getByLabel("Mitä pitää muuttaa? (pakollinen)");
+    if (!(await reason.isVisible())) {
+      await page.getByText("Pyydä muutoksia tai hylkää").click();
+    }
+    await reason.fill(second);
+    await page.getByRole("button", { name: "Hylkää" }).click();
+
+    await expect(page.getByText(/Tämä gate on hylätty/)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(second)).toBeVisible();
+  });
+
   test("reject records the reason and shows the rejected state", async ({ page, request }) => {
     test.setTimeout(120_000);
 
