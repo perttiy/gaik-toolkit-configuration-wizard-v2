@@ -1,8 +1,12 @@
 import { test, expect } from "@playwright/test";
 import { DEV_USERS, loginAsDev } from "./helpers/auth";
-import { waitForApiHealthy } from "./helpers/api";
+import { setApiSessionStep, waitForApiHealthy } from "./helpers/api";
 
 const STACK_E2E = process.env.PLAYWRIGHT_STACK_E2E === "true";
+
+function sessionIdFromPath(url: string): string {
+  return new URL(url).pathname.split("/").pop() as string;
+}
 
 /**
  * #126 — Gate 1 "Request changes" / "Reject" against the real stack
@@ -24,7 +28,7 @@ test.describe("#126 Gate 1 objections carry a reason (stack)", () => {
     await waitForApiHealthy(request);
   });
 
-  test("request changes stays on the gate and records the reason", async ({ page }) => {
+  test("request changes stays on the gate and records the reason", async ({ page, request }) => {
     test.setTimeout(120_000);
 
     await loginAsDev(page, DEV_USERS.primary);
@@ -32,11 +36,10 @@ test.describe("#126 Gate 1 objections carry a reason (stack)", () => {
     await page.getByRole("button", { name: "Aloita uusi" }).click();
     await page.waitForURL(/\/sessions\//);
 
-    // Steps 1–3 are gathering; step 4 is Gate 1.
-    for (let step = 2; step <= 4; step += 1) {
-      await page.getByRole("button", { name: "Seuraava vaihe →" }).click();
-      await expect(page.getByText(`VAIHE ${step} / 13`)).toBeVisible();
-    }
+    // Gate 1 is step 4. Gathering (1–3) is advanced by the agent, not by the
+    // UI button, so put the session on the gate through the API.
+    await setApiSessionStep(request, sessionIdFromPath(page.url()), 4);
+    await page.reload({ waitUntil: "domcontentloaded" });
     await expect(
       page.getByRole("heading", { name: "Vaatimusten tarkistus" }),
     ).toBeVisible();
@@ -61,7 +64,7 @@ test.describe("#126 Gate 1 objections carry a reason (stack)", () => {
     await expect(page.getByText(/Muutospyyntö kirjattu/)).toBeVisible();
   });
 
-  test("reject records the reason and shows the rejected state", async ({ page }) => {
+  test("reject records the reason and shows the rejected state", async ({ page, request }) => {
     test.setTimeout(120_000);
 
     await loginAsDev(page, DEV_USERS.primary);
@@ -69,10 +72,8 @@ test.describe("#126 Gate 1 objections carry a reason (stack)", () => {
     await page.getByRole("button", { name: "Aloita uusi" }).click();
     await page.waitForURL(/\/sessions\//);
 
-    for (let step = 2; step <= 4; step += 1) {
-      await page.getByRole("button", { name: "Seuraava vaihe →" }).click();
-      await expect(page.getByText(`VAIHE ${step} / 13`)).toBeVisible();
-    }
+    await setApiSessionStep(request, sessionIdFromPath(page.url()), 4);
+    await page.reload({ waitUntil: "domcontentloaded" });
 
     await page.getByText("Pyydä muutoksia tai hylkää").click();
     const reason = "Vaatimukset eivät vastaa sitä mitä prosessissa oikeasti tehdään.";
