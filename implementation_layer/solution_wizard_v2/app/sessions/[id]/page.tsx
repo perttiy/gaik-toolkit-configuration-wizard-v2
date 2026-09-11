@@ -8,10 +8,11 @@ import { ChatDock } from "@/components/chat-dock";
 import { WorkspacePanel } from "@/components/workspace-panel";
 import { GateTimeline } from "@/components/gate-timeline";
 import { Gate1Review } from "@/components/gate1-review";
+import { GateObjection } from "@/components/gate-objection";
 import { GatheringView } from "@/components/gathering-view";
 import { GatheringAdvanceButton } from "@/components/gathering-advance-button";
 import { FieldSchemaEditor } from "@/components/field-schema-editor";
-import { advance, regress, approve, reject, requestChanges } from "./actions";
+import { advance, regress, approve } from "./actions";
 import { getSessionForUser } from "@/lib/session-access";
 import {
   PHASE_COUNT,
@@ -139,6 +140,7 @@ export default async function SessionPage({
                 answers={answers}
                 businessContext={session.businessContext}
                 assumptions={session.assumptions}
+                gateStatus={session.gateStatus[session.step]}
                 t={t}
               />
             ) : isSpec ? (
@@ -187,18 +189,7 @@ export default async function SessionPage({
             {!isGate1 &&
               (gateBlocking ? (
               <div className="flex items-center gap-2">
-                <form action={requestChanges}>
-                  <input type="hidden" name="id" value={session.id} />
-                  <button type="submit" className="btn-secondary">
-                    {t.requestChanges}
-                  </button>
-                </form>
-                <form action={reject}>
-                  <input type="hidden" name="id" value={session.id} />
-                  <button type="submit" className="btn-ghost">
-                    {t.rejectGate}
-                  </button>
-                </form>
+                <GateObjection sessionId={session.id} t={t} />
                 <form action={approve}>
                   <input type="hidden" name="id" value={session.id} />
                   <button type="submit" className="btn-gold">
