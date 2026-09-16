@@ -56,8 +56,6 @@ class ServiceTokenMiddleware(BaseHTTPMiddleware):
                 request.method,
                 "missing_token" if not presented else "bad_token",
             )
-            return JSONResponse(
-                {"detail": "Missing or invalid service token."}, status_code=401
-            )
+            return JSONResponse({"detail": "Missing or invalid service token."}, status_code=401)
 
         return await call_next(request)
