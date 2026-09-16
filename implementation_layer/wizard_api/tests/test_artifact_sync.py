@@ -2,9 +2,10 @@
 
 import json
 import os
+import uuid
 
 from helpers import requires_postgres
-from wizard_api.services import artifact_sync
+from wizard_api.services import artifact_sync, session_service
 
 DRAFT = {
     "use_case": {
@@ -121,11 +122,7 @@ def test_chat_turn_adopts_the_draft_blueprint(client, db_session) -> None:
     assert created["blueprint"]["steps"][0]["id"] == "input"  # seed blueprint
     assert created["active_version"] == 1
 
-    from wizard_api.services import session_service
-
-    import uuid as _uuid
-
-    session = session_service.get_session(db_session, _uuid.UUID(session_id))
+    session = session_service.get_session(db_session, uuid.UUID(session_id))
     write_draft(session.output_dir, DRAFT)
 
     assert artifact_sync.sync_blueprint_from_draft(db_session, session) is True
