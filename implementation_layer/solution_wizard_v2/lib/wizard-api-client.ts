@@ -269,8 +269,11 @@ export async function apiGetPocFiles(id: string): Promise<ApiPocFiles> {
  */
 export async function apiGetPocZip(id: string): Promise<Response> {
   const base = getWizardApiUrl() ?? DEFAULT_API_URL;
+  // outgoingHeaders(), not just the trace id: ServiceTokenMiddleware exempts
+  // only /health and OPTIONS, so without the service token this 401s on every
+  // deployment where WIZARD_API_TOKEN is set.
   return fetch(`${base}/sessions/${encodeURIComponent(id)}/poc`, {
-    headers: { [TRACE_HEADER]: await outgoingTraceId() },
+    headers: await outgoingHeaders(),
     cache: "no-store",
   });
 }

@@ -30,9 +30,16 @@ export const GET = withLogging(
     try {
       const upstream = await apiGetPocZip(id);
       if (!upstream.ok || !upstream.body) {
-        return new Response("no PoC generated yet", {
-          status: upstream.status || 404,
-        });
+        // Don't report an auth or server failure as "nothing generated" — that
+        // sends the reader looking for a missing PoC instead of a broken call.
+        if (upstream.status !== 404) {
+          logger.error(
+            { traceId: getTraceId(), sessionId: id, status: upstream.status },
+            "poc.download upstream rejected the request",
+          );
+          return new Response("PoC download failed", { status: 502 });
+        }
+        return new Response("no PoC generated yet", { status: 404 });
       }
       audit("poc.download", {
         actor: owned.user.email,
