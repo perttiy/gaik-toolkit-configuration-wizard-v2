@@ -496,6 +496,23 @@ function applyTransition(s: WizardSession, event: WizardEvent): WizardSession {
 }
 
 // Advance to the next step. On a gate step, blocked until approved.
+/**
+ * Dev/test only: put a session on a given step directly.
+ *
+ * Gathering (steps 1-3) deliberately has no UI affordance to advance — the
+ * agent moves the session on once it has collected the requirements
+ * (GatheringAdvanceButton only explains that). E2E specs that need a session
+ * further along therefore cannot click their way there in mock mode, and this
+ * is how they say so instead. Guarded by DEV_AUTH at the route.
+ */
+export function setSessionStep(id: string, step: number): WizardSession | undefined {
+  const s = getSession(id);
+  if (!s) return undefined;
+  s.step = Math.min(Math.max(1, Math.trunc(step)), PHASE_COUNT);
+  s.updatedAt = new Date().toISOString();
+  return s;
+}
+
 export function advanceSession(id: string): WizardSession | undefined {
   const s = getSession(id);
   if (!s) return s;
