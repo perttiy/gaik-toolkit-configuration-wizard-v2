@@ -16,12 +16,10 @@
  * foreign origin, being framed, and posting a form off-site.
  */
 export const securityHeaders = [
-  // One year. Only meaningful over HTTPS — the Rahti route terminates TLS at
-  // the edge and already redirects http->https.
-  {
-    key: "Strict-Transport-Security",
-    value: "max-age=31536000; includeSubDomains",
-  },
+  // No Strict-Transport-Security here on purpose. It is set at the OpenShift
+  // route instead (haproxy.router.openshift.io/hsts_header), which also covers
+  // the router's own error pages — a response the app never gets to emit. Two
+  // sources for one header would only drift apart.
   // Clickjacking. `frame-ancestors` below is the modern equivalent; both are
   // set because older browsers ignore the CSP directive.
   { key: "X-Frame-Options", value: "DENY" },

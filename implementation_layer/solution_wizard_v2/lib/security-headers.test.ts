@@ -6,7 +6,6 @@ const csp = byKey["Content-Security-Policy"];
 
 describe("security response headers (#133)", () => {
   it.each([
-    "Strict-Transport-Security",
     "X-Frame-Options",
     "X-Content-Type-Options",
     "Referrer-Policy",
@@ -27,8 +26,8 @@ describe("security response headers (#133)", () => {
     expect(csp).toContain("object-src 'none'");
   });
 
-  it("keeps HSTS at a year so it survives a browser restart", () => {
-    expect(byKey["Strict-Transport-Security"]).toContain("max-age=31536000");
+  it("leaves HSTS to the route, which also covers the router's error pages", () => {
+    expect(byKey["Strict-Transport-Security"]).toBeUndefined();
   });
 
   it("allows the blob/data image sources bpmn-js and next/font need", () => {
