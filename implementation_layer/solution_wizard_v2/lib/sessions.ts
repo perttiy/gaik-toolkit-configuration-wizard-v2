@@ -49,6 +49,7 @@ export type {
 import {
   apiGatesToUi,
   uiGateApprovalPatch,
+  uiGatePendingPatch,
   uiGateRejectPatch,
 } from "@/lib/session-gate-map";
 import { transition } from "@/lib/wizard-state-machine";
@@ -89,6 +90,19 @@ function detailToWizardSession(detail: ApiSessionDetail): WizardSession {
           expectedValue: detail.business_context.expected_value ?? [],
           knowledgeProcesses: detail.business_context.knowledge_processes ?? [],
           domain: detail.business_context.domain ?? "",
+        }
+      : null,
+    targetOutputSpec: detail.target_output_spec
+      ? {
+          schemaName: detail.target_output_spec.schema_name ?? "",
+          fields: detail.target_output_spec.fields ?? [],
+          fieldTypes: detail.target_output_spec.field_types ?? {},
+          requiredFields: detail.target_output_spec.required_fields ?? [],
+          optionalFields: detail.target_output_spec.optional_fields ?? [],
+          fieldDescriptions: detail.target_output_spec.field_descriptions ?? {},
+          allowedValues: detail.target_output_spec.allowed_values ?? {},
+          missingValuePolicy: detail.target_output_spec.missing_value_policy ?? "",
+          validationRules: detail.target_output_spec.validation_rules ?? [],
         }
       : null,
     assumptions: (detail.assumptions ?? []).map((a) => ({
@@ -235,9 +249,16 @@ export async function approveGate(id: string): Promise<WizardSession | undefined
   return advanceSession(id);
 }
 
-export async function rejectGate(id: string): Promise<WizardSession | undefined> {
+// Reject the current gate. The reason is required: a rejection the reviewer
+// cannot see and the agent cannot read is the bug in #126.
+export async function rejectGate(
+  id: string,
+  feedback: string,
+  ack: string,
+): Promise<WizardSession | undefined> {
+  if (!feedback.trim()) return getSession(id);
   if (!wizardApiEnabled()) {
-    return mock.rejectGate(id);
+    return mock.rejectGate(id, feedback, ack);
   }
   const current = await getSession(id);
   if (!current || !isGateStep(current.step)) return current;
@@ -247,19 +268,22 @@ export async function rejectGate(id: string): Promise<WizardSession | undefined>
     gate_statuses: patch,
     metadata: { status: "active" },
   });
+  await postMessage(id, feedback, ack);
   return getSession(id);
 }
 
+// Request changes at a gate. The feedback is required — `MessageAppend`
+// rejects an empty `user_content`, so an empty request used to drop the
+// acknowledgement silently (#126).
 export async function requestGateChanges(
   id: string,
   feedback: string,
   ack: string,
 ): Promise<WizardSession | undefined> {
+  if (!feedback.trim()) return getSession(id);
   if (!wizardApiEnabled()) {
     return mock.requestGateChanges(id, feedback, ack);
   }
-  // The live agent that revises the specification from the feedback is wired in
-  // #29–31. For now, step back to the revision step and record the feedback.
   const current = await getSession(id);
   if (!current) return current;
   const t = transition(
@@ -267,8 +291,11 @@ export async function requestGateChanges(
     "REQUEST_CHANGES",
   );
   if (t.noop) return current;
+  // The session stays on the gate and the feedback goes to the agent, which
+  // revises the artifacts in place. Reopen the gate in case it was rejected.
+  const patch = uiGatePendingPatch(current.step);
   await apiPatchSession(id, {
-    step: t.state.step,
+    ...(patch ? { gate_statuses: patch } : {}),
     metadata: { status: "active" },
   });
   await postMessage(id, feedback, ack);
