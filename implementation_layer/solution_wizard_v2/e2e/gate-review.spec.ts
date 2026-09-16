@@ -27,29 +27,47 @@ test.describe("Gate 1 review", () => {
     await expect(page.getByText("Odotettu arvo")).toBeVisible();
   });
 
-  test("reject records the rejection but gives no visible confirmation (#126)", async ({
-    page,
-  }) => {
-    // Known gap, not a design choice: rejectGate() does set gate_statuses to
-    // "rejected" (lib/mock-sessions.ts), and gate-timeline.tsx's colour
-    // classes for it already exist, but neither the sidebar label nor
-    // Gate1Review itself ever renders a rejected notice — Gate1Review isn't
-    // even passed the gate status. Pinned here as current behaviour so a fix
-    // (#126) shows up as an intentional test change, not a silent one.
+  // These two pinned the #126 bug as it was: reject left no visible trace and
+  // request-changes dropped the reviewer back a step. #149 fixed both, so they
+  // now pin the fixed behaviour instead — the intentional test change the
+  // original comment asked for.
+  test("reject records the reason and shows the rejected state (#126)", async ({ page }) => {
     await loginAsDev(page);
     await page.goto("/sessions/ses_gate1_blocked");
 
+    await page.getByText("Pyydä muutoksia tai hylkää").click();
+    const reason = "Vaatimukset eivät vastaa prosessia.";
+    await page.getByLabel("Mitä pitää muuttaa? (pakollinen)").fill(reason);
     await page.getByRole("button", { name: "Hylkää" }).click();
-    await expect(page.getByRole("heading", { name: "Gate 1", exact: true })).toBeVisible();
-    await expect(page.getByText("Hylätty")).toHaveCount(0);
+
+    await expect(page.getByText(/Tämä gate on hylätty/)).toBeVisible();
+    await expect(page.getByText(reason)).toBeVisible();
   });
 
-  test("request changes regresses to the previous step", async ({ page }) => {
+  test("request changes stays on the gate and records the reason (#126)", async ({ page }) => {
     await loginAsDev(page);
     await page.goto("/sessions/ses_gate1_blocked");
 
+    await page.getByText("Pyydä muutoksia tai hylkää").click();
+    const reason = "Syöte tulee ääniviestinä, ei tekstinä.";
+    await page.getByLabel("Mitä pitää muuttaa? (pakollinen)").fill(reason);
     await page.getByRole("button", { name: "Pyydä muutoksia" }).click();
-    await expect(page.getByText("VAIHE 3 / 13")).toBeVisible();
+
+    // The old behaviour was moveTo(step - 1) — VAIHE 3 / 13. It now stays.
+    await expect(page.getByText("VAIHE 4 / 13")).toBeVisible();
+    await expect(page.getByText(reason)).toBeVisible();
+    await expect(page.getByText(/Muutospyyntö kirjattu/)).toBeVisible();
+  });
+
+  test("neither objection can be submitted without a reason (#126)", async ({ page }) => {
+    await loginAsDev(page);
+    await page.goto("/sessions/ses_gate1_blocked");
+
+    await page.getByText("Pyydä muutoksia tai hylkää").click();
+    const reason = page.getByLabel("Mitä pitää muuttaa? (pakollinen)");
+    await page.getByRole("button", { name: "Pyydä muutoksia" }).click();
+    await expect(reason).toHaveJSProperty("validity.valid", false);
+    await expect(page.getByText("VAIHE 4 / 13")).toBeVisible();
   });
 
   test("business context and open assumptions render", async ({ page }) => {
