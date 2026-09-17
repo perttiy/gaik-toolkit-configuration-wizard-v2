@@ -149,6 +149,9 @@ export type Dict = {
   pocLogStepOk: string;
   pocLogValidate: string;
   pocLogDone: string;
+  pocLogGenerating: string;
+  pocLogWrote: string;
+  pocLogFailed: string;
   gateNotice: string;
   previous: string;
   nextPhase: string;
@@ -347,6 +350,9 @@ const fi: Dict = {
   pocLogStepOk: "valmis",
   pocLogValidate: "Validoidaan tulokset…",
   pocLogDone: "PoC valmis.",
+  pocLogGenerating: "Generoidaan PoC-paketti hyväksytystä blueprintistä…",
+  pocLogWrote: "Kirjoitettu",
+  pocLogFailed: "PoC-paketin generointi epäonnistui.",
   gateNotice:
     "Tämä on gate-vaihe. Hyväksy jatkaaksesi seuraavaan vaiheeseen.",
   previous: "← Edellinen",
@@ -574,6 +580,9 @@ const en: Dict = {
   pocLogStepOk: "done",
   pocLogValidate: "Validating results…",
   pocLogDone: "PoC complete.",
+  pocLogGenerating: "Generating the PoC package from the approved blueprint…",
+  pocLogWrote: "Wrote",
+  pocLogFailed: "PoC package generation failed.",
   gateNotice: "This is a gate step. Approve to continue to the next step.",
   previous: "← Previous",
   nextPhase: "Next step →",

@@ -62,3 +62,153 @@ def test_poc_endpoints_404_for_an_unknown_session(client) -> None:
     missing = uuid.uuid4()
     assert client.get(f"/sessions/{missing}/poc/files").status_code == 404
     assert client.get(f"/sessions/{missing}/poc").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# #93 — generating the package from the session's blueprint
+# ---------------------------------------------------------------------------
+
+import json  # noqa: E402
+
+import pytest  # noqa: E402
+from wizard_api.services import artifact_sync, poc_service  # noqa: E402
+
+requires_scaffolder = pytest.mark.skipif(
+    not poc_service.solution_wizard_available(),
+    reason="solution_wizard is not installed",
+)
+
+#: The output the user agreed at the Specification step. The agent writes it to
+#: the draft blueprint; the V2 blueprint in the database does not carry it.
+_AGREED_SPEC = {
+    "schema_name": "IncidentReport",
+    "fields": ["incident_id", "severity", "summary"],
+    "field_types": {"incident_id": "str", "severity": "str", "summary": "str"},
+    "required_fields": ["incident_id", "severity"],
+    "optional_fields": ["summary"],
+    "allowed_values": {"severity": ["low", "high"]},
+}
+
+
+def _write_draft(output_dir: str, spec: dict) -> None:
+    path = artifact_sync.artifact_path(output_dir, artifact_sync.DRAFT_BLUEPRINT_FILE)
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump({"target_output_spec": spec}, fh)
+
+
+@requires_postgres
+@requires_scaffolder
+def test_generate_produces_the_v1_scaffolder_file_set(client, db_session) -> None:
+    created = client.post("/sessions", json={"user_id": "poc-user", "title": "PoC"}).json()
+    session_id = created["id"]
+
+    generated = client.post(f"/sessions/{session_id}/poc/generate")
+    assert generated.status_code == 200
+    body = generated.json()
+    assert body["generated"] is True
+    assert body["regenerated"] is False
+
+    # The same set scaffold_poc writes — the endpoint adds nothing of its own
+    # beyond the manifest, which is hidden from the listing.
+    assert set(body["files"]) == {
+        ".env.example",
+        "README.md",
+        "config.yaml",
+        "evals/ground_truth/.gitkeep",
+        "evals/run_basic_eval.py",
+        "prompts/extraction_requirements.md",
+        "requirements.txt",
+        "run_poc.py",
+        "schemas/output_schema.json",
+        "schemas/output_schema.py",
+        "schemas/output_schema_requirements.json",
+    }
+
+    # And the package is immediately visible to the endpoints that serve it.
+    listed = client.get(f"/sessions/{session_id}/poc/files").json()
+    assert listed["generated"] is True
+    assert "run_poc.py" in listed["files"]
+    assert poc_service.MANIFEST_NAME not in listed["files"]
+    assert client.get(f"/sessions/{session_id}/poc").status_code == 200
+
+
+@requires_postgres
+@requires_scaffolder
+def test_generated_schema_uses_the_agreed_output_fields(client, db_session) -> None:
+    created = client.post("/sessions", json={"user_id": "poc-user", "title": "Incidents"}).json()
+    session_id = created["id"]
+    output_dir = _session_output_dir(db_session, session_id)
+    _write_draft(output_dir, _AGREED_SPEC)
+
+    client.post(f"/sessions/{session_id}/poc/generate")
+
+    schema = open(
+        os.path.join(output_dir, "poc", "schemas", "output_schema.py"), encoding="utf-8"
+    ).read()
+    # Without the override the V2 → V1 adapter hands the scaffolder a
+    # placeholder ("Output" with a single "result" field), so every PoC would
+    # ship a dummy schema instead of the one the user agreed to.
+    assert "class IncidentReport(BaseModel):" in schema
+    assert "incident_id" in schema and "severity" in schema
+    assert "class Output(BaseModel):" not in schema
+
+
+@requires_postgres
+@requires_scaffolder
+def test_regenerating_after_a_blueprint_change_is_not_a_silent_no_op(client, db_session) -> None:
+    created = client.post("/sessions", json={"user_id": "poc-user", "title": "Incidents"}).json()
+    session_id = created["id"]
+    output_dir = _session_output_dir(db_session, session_id)
+    _write_draft(output_dir, _AGREED_SPEC)
+
+    client.post(f"/sessions/{session_id}/poc/generate")
+    schema_path = os.path.join(output_dir, "poc", "schemas", "output_schema.py")
+    before = open(schema_path, encoding="utf-8").read()
+    assert "class IncidentReport(BaseModel):" in before
+
+    # The user reworks the agreed output and the PoC is generated again.
+    _write_draft(
+        output_dir,
+        {
+            "schema_name": "ServiceRequest",
+            "fields": ["request_id", "channel"],
+            "field_types": {"request_id": "str", "channel": "str"},
+            "required_fields": ["request_id", "channel"],
+        },
+    )
+    again = client.post(f"/sessions/{session_id}/poc/generate")
+    assert again.status_code == 200
+    assert again.json()["regenerated"] is True
+    assert again.json()["blueprint_changed"] is True
+
+    after = open(schema_path, encoding="utf-8").read()
+    # scaffold_poc leaves an existing output_schema.py alone so a schema the
+    # user reviewed mid-conversation survives. That guard would freeze our own
+    # output too, which is exactly the no-op this test forbids.
+    assert "class ServiceRequest(BaseModel):" in after
+    assert "class IncidentReport(BaseModel):" not in after
+
+
+@requires_postgres
+@requires_scaffolder
+def test_regenerating_keeps_sample_inputs_and_earlier_results(client, db_session) -> None:
+    created = client.post("/sessions", json={"user_id": "poc-user", "title": "PoC"}).json()
+    session_id = created["id"]
+    output_dir = _session_output_dir(db_session, session_id)
+
+    client.post(f"/sessions/{session_id}/poc/generate")
+    poc = os.path.join(output_dir, "poc")
+    with open(os.path.join(poc, "sample_input", "case.txt"), "w", encoding="utf-8") as fh:
+        fh.write("a real input the user dropped in\n")
+    with open(os.path.join(poc, "output", "result.json"), "w", encoding="utf-8") as fh:
+        fh.write('{"from": "an earlier run"}\n')
+
+    client.post(f"/sessions/{session_id}/poc/generate")
+
+    assert open(os.path.join(poc, "sample_input", "case.txt"), encoding="utf-8").read()
+    assert open(os.path.join(poc, "output", "result.json"), encoding="utf-8").read()
+
+
+@requires_postgres
+def test_generate_404s_for_an_unknown_session(client) -> None:
+    assert client.post(f"/sessions/{uuid.uuid4()}/poc/generate").status_code == 404
