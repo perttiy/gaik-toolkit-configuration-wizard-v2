@@ -182,13 +182,27 @@ def download_poc(session_id: uuid.UUID, db: Session = Depends(get_db)) -> Respon
 
 
 @router.post("/{session_id}/poc/generate")
-def generate_poc(session_id: uuid.UUID, db: Session = Depends(get_db)) -> dict:
+def generate_poc(
+    session_id: uuid.UUID,
+    force: bool = Query(
+        False,
+        description=(
+            "Scaffold over a package the agent produced. Off by default: the "
+            "agent wires the real component for the case's own pattern, which "
+            "this deterministic scaffolder cannot reproduce."
+        ),
+    ),
+    db: Session = Depends(get_db),
+) -> dict:
     """Scaffold the runnable PoC package from the session's active blueprint (#93).
 
     Deterministic and safe to repeat: a second call after a blueprint change
     rewrites the package rather than quietly leaving the old one in place. The
     generated files are the same set the V1 scaffolder produces, and they are
     served by the two endpoints above.
+
+    When the agent already produced a package in the conversation, this reports
+    it and changes nothing unless ``force`` is set.
     """
     from wizard_api.services import poc_service
 
@@ -206,6 +220,7 @@ def generate_poc(session_id: uuid.UUID, db: Session = Depends(get_db)) -> dict:
             session_id=str(session_id),
             output_dir=session.output_dir,
             target_output_spec=spec,
+            force=force,
         )
     except poc_service.PocGenerationError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc

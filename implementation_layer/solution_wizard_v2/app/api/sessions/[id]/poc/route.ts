@@ -96,22 +96,30 @@ export const POST = withLogging(
         pattern?: string;
         files?: string[];
         regenerated?: boolean;
+        scaffolded?: boolean;
+        source?: string;
       };
       const files = result.files ?? [];
       audit("poc.generate", {
         actor: owned.user.email,
         resource: { type: "session", id },
         outcome: "success",
-        mode: "scaffolder",
+        mode: result.source ?? "scaffolder",
         pattern: result.pattern ?? "",
         fileCount: files.length,
         regenerated: Boolean(result.regenerated),
+        scaffolded: result.scaffolded !== false,
       });
-      const lines = [
-        t.pocLogGenerating,
-        ...files.map((file) => `  ✓ ${t.pocLogWrote} poc/${file}`),
-        t.pocLogDone,
-      ];
+      // The agent's own package is kept, not rewritten — say that rather than
+      // reporting files this route did not write.
+      const lines =
+        result.scaffolded === false
+          ? [t.pocLogAgentPackage, t.pocLogDone]
+          : [
+              t.pocLogGenerating,
+              ...files.map((file) => `  ✓ ${t.pocLogWrote} poc/${file}`),
+              t.pocLogDone,
+            ];
       return sse(lines, { paced: false, status: "success" });
     } catch (err) {
       logger.error({ traceId: getTraceId(), err, sessionId: id }, "poc.generate failed");

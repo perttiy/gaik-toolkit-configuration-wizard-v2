@@ -212,3 +212,41 @@ def test_regenerating_keeps_sample_inputs_and_earlier_results(client, db_session
 @requires_postgres
 def test_generate_404s_for_an_unknown_session(client) -> None:
     assert client.post(f"/sessions/{uuid.uuid4()}/poc/generate").status_code == 404
+
+
+@requires_postgres
+@requires_scaffolder
+def test_generate_never_overwrites_the_agents_own_package(client, db_session) -> None:
+    """The agent wires the real GAIK component for the case's own pattern and can
+    add synthetic test data and an eval rubric. Scaffolding over that would trade
+    a working, case-specific PoC for a generic template (found while reviewing a
+    live use-case run: every generated PoC was pattern-specific, none generic)."""
+    created = client.post("/sessions", json={"user_id": "poc-user", "title": "UC04"}).json()
+    session_id = created["id"]
+    output_dir = _session_output_dir(db_session, session_id)
+
+    agent_run = (
+        '"""UC04 extraction PoC — written by the agent."""\n'
+        "from gaik.software_components.extractor import DataExtractor\n"
+        "extractor = DataExtractor(schema=IncidentReport)\n"
+    )
+    poc = os.path.join(output_dir, "poc")
+    os.makedirs(poc, exist_ok=True)
+    with open(os.path.join(poc, "run_poc.py"), "w", encoding="utf-8") as fh:
+        fh.write(agent_run)
+
+    body = client.post(f"/sessions/{session_id}/poc/generate").json()
+    assert body["source"] == "agent"
+    assert body["scaffolded"] is False
+    assert body["files"] == ["run_poc.py"]
+
+    # Untouched: still the agent's wiring, not the generic template.
+    with open(os.path.join(poc, "run_poc.py"), encoding="utf-8") as fh:
+        assert fh.read() == agent_run
+
+    # force=true is the deliberate escape hatch when the blueprint has moved on.
+    forced = client.post(f"/sessions/{session_id}/poc/generate?force=true").json()
+    assert forced["source"] == "scaffolder"
+    assert forced["scaffolded"] is True
+    with open(os.path.join(poc, "run_poc.py"), encoding="utf-8") as fh:
+        assert "written by the agent" not in fh.read()

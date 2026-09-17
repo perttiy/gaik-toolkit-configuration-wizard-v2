@@ -114,16 +114,42 @@ def generate_poc(
     session_id: str,
     output_dir: str,
     target_output_spec: dict[str, Any] | None = None,
+    force: bool = False,
 ) -> dict[str, Any]:
     """Scaffold ``<output_dir>/poc`` from the session's active blueprint.
 
     Returns the pattern the scaffolder picked, the files now in the package,
     and whether this replaced an earlier scaffold of ours.
+
+    A package the *agent* produced during the conversation is left alone unless
+    ``force`` says otherwise: the agent wires the real GAIK component for the
+    case's own pattern and can add synthetic test data and an eval rubric,
+    which this deterministic scaffolder cannot reproduce. Overwriting it would
+    trade a working, case-specific PoC for a generic template.
     """
     if not _SOLUTION_WIZARD_AVAILABLE:
         raise PocGenerationError("solution_wizard package is not installed")
     if not output_dir:
         raise PocGenerationError("session has no output_dir")
+
+    root = Path(output_dir)
+    poc_dir = root / "poc"
+    previous = _read_manifest(root)
+
+    if previous is None and poc_dir.is_dir():
+        existing = _relative_files(poc_dir)
+        if existing and not force:
+            # No manifest and a populated poc/ means the agent got there first.
+            return {
+                "generated": True,
+                "source": "agent",
+                "scaffolded": False,
+                "pattern": "",
+                "template_wired": True,
+                "files": existing,
+                "regenerated": False,
+                "blueprint_changed": False,
+            }
 
     v1 = build_v1_blueprint(
         v2_blueprint, session_id=session_id, target_output_spec=target_output_spec
@@ -133,9 +159,6 @@ def generate_poc(
     except Exception as exc:  # pydantic ValidationError and friends
         raise PocGenerationError(f"blueprint is not scaffoldable: {exc}") from exc
 
-    root = Path(output_dir)
-    poc_dir = root / "poc"
-    previous = _read_manifest(root)
     if previous:
         _clear_previous(poc_dir, previous)
 
@@ -154,6 +177,8 @@ def generate_poc(
 
     return {
         "generated": True,
+        "source": "scaffolder",
+        "scaffolded": True,
         "pattern": result.get("pattern", ""),
         "template_wired": bool(result.get("template_wired")),
         "files": files,
