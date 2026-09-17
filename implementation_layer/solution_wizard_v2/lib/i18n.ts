@@ -138,6 +138,9 @@ export type Dict = {
   pocRunning: string;
   pocRerun: string;
   pocIdle: string;
+  pocGeneratedTitle: string;
+  pocDownload: string;
+  pocNotGenerated: string;
   pocSuccess: string;
   pocFailed: string;
   pocLogStart: string;
@@ -153,6 +156,11 @@ export type Dict = {
   rejectGate: string;
   requestChanges: string;
   changesRequested: string;
+  gateRejectedAck: string;
+  gate1Rejected: string;
+  gate1FeedbackSummary: string;
+  gate1FeedbackLabel: string;
+  gate1FeedbackPlaceholder: string;
   gate1Title: string;
   gate1Intro: string;
   gate1ChecklistTitle: string;
@@ -327,6 +335,10 @@ const fi: Dict = {
   pocRunning: "Ajetaan…",
   pocRerun: "Aja PoC uudelleen",
   pocIdle: "PoC:tä ei ole vielä ajettu. Aja se nähdäksesi lokit ja tuloksen.",
+  pocGeneratedTitle: "Generoitu PoC-paketti",
+  pocDownload: "Lataa PoC",
+  pocNotGenerated:
+    "PoC-pakettia ei ole vielä generoitu. Se syntyy kun wizard etenee Gate 3:een asti.",
   pocSuccess: "Onnistui",
   pocFailed: "Epäonnistui",
   pocLogStart: "Käynnistetään eristetty PoC-ympäristö…",
@@ -343,7 +355,15 @@ const fi: Dict = {
   rejectGate: "Hylkää",
   requestChanges: "Pyydä muutoksia",
   changesRequested:
-    "Muutospyyntö kirjattu. Palattiin speksivaiheeseen tarkennusta varten.",
+    "Muutospyyntö kirjattu. Tarkennetaan vaatimuksia palautteen perusteella — gate pysyy avoimena.",
+  gateRejectedAck:
+    "Gate hylätty ja perustelu kirjattu. Kerro mitä pitää muuttaa, niin korjataan.",
+  gate1Rejected:
+    "Tämä gate on hylätty. Perustelu on chatissa — jatka keskustelua tai hyväksy vaatimukset uudelleen kun ne on korjattu.",
+  gate1FeedbackSummary: "Pyydä muutoksia tai hylkää",
+  gate1FeedbackLabel: "Mitä pitää muuttaa? (pakollinen)",
+  gate1FeedbackPlaceholder:
+    "Esim. syötemuoto on väärä — dokumentit tulevat skannattuina PDF-tiedostoina, ei Word-muodossa.",
   gate1Title: "Vaatimusten tarkistus",
   gate1Intro:
     "Tarkista että vaiheissa 1–3 kerätyt vaatimukset ovat riittävät. Hyväksyntä lukitsee vaatimukset ja käynnistää arkkitehtuurin suunnittelun.",
@@ -542,6 +562,10 @@ const en: Dict = {
   pocRunning: "Running…",
   pocRerun: "Run PoC again",
   pocIdle: "PoC has not been run yet. Run it to see logs and the result.",
+  pocGeneratedTitle: "Generated PoC package",
+  pocDownload: "Download PoC",
+  pocNotGenerated:
+    "The PoC package has not been generated yet. It appears once the wizard reaches Gate 3.",
   pocSuccess: "Success",
   pocFailed: "Failed",
   pocLogStart: "Starting isolated PoC environment…",
@@ -557,7 +581,15 @@ const en: Dict = {
   rejectGate: "Reject",
   requestChanges: "Request changes",
   changesRequested:
-    "Changes requested. Returned to the specification step for revision.",
+    "Changes requested. The requirements will be revised from your feedback — the gate stays open.",
+  gateRejectedAck:
+    "Gate rejected and the reason recorded. Tell me what needs to change and I will fix it.",
+  gate1Rejected:
+    "This gate was rejected. The reason is in the chat — keep the conversation going, or approve the requirements again once they are fixed.",
+  gate1FeedbackSummary: "Request changes or reject",
+  gate1FeedbackLabel: "What needs to change? (required)",
+  gate1FeedbackPlaceholder:
+    "e.g. the input format is wrong — the documents arrive as scanned PDFs, not Word files.",
   gate1Title: "Requirements review",
   gate1Intro:
     "Check that the requirements gathered in steps 1–3 are sufficient. Approving locks the requirements and starts the architecture design.",

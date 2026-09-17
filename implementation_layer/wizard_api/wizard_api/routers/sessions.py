@@ -1,6 +1,8 @@
 import asyncio
+import io
 import os
 import uuid
+import zipfile
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
@@ -15,7 +17,12 @@ from wizard_api.schemas.session import (
     SessionResponse,
     SessionUpdate,
 )
-from wizard_api.services import agent_service, blueprint_service, session_service
+from wizard_api.services import (
+    agent_service,
+    artifact_sync,
+    blueprint_service,
+    session_service,
+)
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
@@ -116,6 +123,64 @@ def sync_session_bpmn(
     return session_service.session_detail(db, session)
 
 
+def _poc_dir(output_dir: str) -> str | None:
+    """Resolve the session's generated PoC folder (``<output_dir>/poc``), guarding
+    against path escapes. Returns None if output_dir is unset or the resolved poc
+    path would fall outside it."""
+    if not output_dir:
+        return None
+    base = os.path.realpath(output_dir)
+    poc = os.path.realpath(os.path.join(base, "poc"))
+    if poc != base and not poc.startswith(base + os.sep):
+        return None
+    return poc
+
+
+@router.get("/{session_id}/poc/files")
+def list_poc_files(session_id: uuid.UUID, db: Session = Depends(get_db)) -> dict:
+    """List the files in the generated PoC folder so the UI can show what the
+    agent produced. Empty (generated=False) until the PoC scaffolder has run."""
+    session = session_service.get_session(db, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    poc = _poc_dir(session.output_dir)
+    if not poc or not os.path.isdir(poc):
+        return {"generated": False, "files": []}
+    files = sorted(
+        os.path.relpath(os.path.join(root, name), poc)
+        for root, _, names in os.walk(poc)
+        for name in names
+    )
+    return {"generated": True, "files": files}
+
+
+@router.get("/{session_id}/poc")
+def download_poc(session_id: uuid.UUID, db: Session = Depends(get_db)) -> Response:
+    """Zip the generated PoC folder and return it as a download. 404 until the
+    PoC scaffolder (V1 Phase 10) has produced <output_dir>/poc."""
+    session = session_service.get_session(db, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    poc = _poc_dir(session.output_dir)
+    if not poc or not os.path.isdir(poc):
+        raise HTTPException(status_code=404, detail="no PoC generated yet")
+    parent = os.path.dirname(poc)  # so archive entries keep the poc/ prefix
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for root, _, names in os.walk(poc):
+            for name in names:
+                fp = os.path.join(root, name)
+                zf.write(fp, os.path.relpath(fp, parent))
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="poc-{session_id}.zip"',
+            "Cache-Control": "no-store",
+        },
+    )
+
+
 @router.post("", response_model=SessionDetailResponse, status_code=201)
 def create_session(payload: SessionCreate, db: Session = Depends(get_db)) -> SessionDetailResponse:
     session = session_service.create_session(db, payload)
@@ -212,10 +277,9 @@ async def chat(
                 user_message,
                 assistant_text,
             )
-        # Agent-driven advancement: the wizard writes use_case.blueprint.json at
-        # Phase 3 (spec generation), right before Gate 1. Its appearance means
-        # gathering is complete → advance to Gate 1 so the user can't skip it.
-        await asyncio.to_thread(_advance_to_gate1_if_ready, db, session)
+        # The agent writes its artifacts to disk as the conversation moves;
+        # pull them into the session so the workspace keeps up (#141).
+        await asyncio.to_thread(_sync_artifacts_and_advance, db, session)
 
     return StreamingResponse(
         gen(),
@@ -224,13 +288,24 @@ async def chat(
     )
 
 
-def _advance_to_gate1_if_ready(db: Session, session) -> None:
-    """During gathering (step < 4), advance to Gate 1 once the wizard has written
-    the draft blueprint (use_case.blueprint.json) — the Phase 3 → Gate 1 boundary."""
-    if session.step >= 4:
-        return
-    blueprint_path = os.path.join(session.output_dir, "use_case.blueprint.json")
-    if os.path.exists(blueprint_path):
+def _sync_artifacts_and_advance(db: Session, session) -> None:
+    """After a chat turn: adopt the agent's draft blueprint, then advance to
+    Gate 1 if gathering has just finished.
+
+    The wizard writes ``use_case.blueprint.json`` at Phase 3 (spec generation),
+    right before Gate 1. Its appearance means gathering is complete → advance to
+    Gate 1 so the user cannot skip it. Its *content* is the blueprint the
+    workspace shows, and BPMN is generated from that, so reading it here is what
+    makes blueprint, schema and diagram follow the conversation (#141) instead
+    of staying on the seed blueprint.
+
+    Best-effort by design: the file is written mid-conversation and a chat turn
+    must not fail because it was missing or half-written.
+    """
+    draft = artifact_sync.read_draft_blueprint(session.output_dir)
+    if draft is not None:
+        artifact_sync.sync_blueprint_from_draft(db, session, draft)
+    if session.step < 4 and artifact_sync.has_draft_blueprint(session.output_dir):
         session_service.update_session(db, session, SessionUpdate(step=4))
 
 

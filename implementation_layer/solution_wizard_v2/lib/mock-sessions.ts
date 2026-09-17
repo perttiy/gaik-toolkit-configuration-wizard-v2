@@ -14,6 +14,7 @@ import {
   type WizardEvent,
 } from "./wizard-state-machine";
 import { REQUIREMENT_POINTS, openingQuestion } from "./requirements-model";
+import type { TargetOutputSpec } from "./target-output-spec";
 
 // Re-export the state-machine structure so existing importers keep their path.
 export { GATE_STEPS, isGateStep };
@@ -111,6 +112,8 @@ export type WizardSession = {
   // Business framing the agent gathered into the V1 draft blueprint (surfaced
   // read-only at Gate 1). Present once gathering is complete; null otherwise.
   businessContext?: BusinessContext | null;
+  /** Agreed output fields from the agent's draft blueprint (#141). */
+  targetOutputSpec?: TargetOutputSpec | null;
   // Open assumptions the agent recorded into the draft blueprint (Gate 1).
   assumptions?: Assumption[];
 };
@@ -382,6 +385,116 @@ function buildSeedSessions(): WizardSession[] {
       { id: "output", name: "Shortlist", type: "io", description: "Selected candidates forward" },
     ],
   }),
+  // -- E2E-only fixtures below: dedicated, isolated sessions so gate-review
+  // tests never mutate the three narrative fixtures above (and vice versa).
+  {
+    ...seedSession(
+      "ses_gate1_ready",
+      DEV_OWNER,
+      "Gate 1 — ready to approve (e2e fixture)",
+      4,
+      1,
+      0,
+      {
+        name: "Gate 1 ready fixture",
+        description: "",
+        goal: "",
+        steps: [
+          { id: "input", name: "Input", type: "io" },
+          { id: "process", name: "Process", type: "ai", component: "LLM" },
+        ],
+      },
+    ),
+    businessContext: {
+      currentProcess: "Three people manually review invoices every morning.",
+      painPoints: ["Slow", "Error-prone"],
+      intendedUsers: ["Finance team"],
+      reviewers: ["Finance lead"],
+      expectedValue: ["Faster processing", "Fewer manual errors"],
+      knowledgeProcesses: ["Invoice review"],
+      domain: "Finance",
+    },
+    assumptions: [
+      {
+        id: "a1",
+        text: "Invoices arrive as PDF email attachments.",
+        status: "confirmed",
+        impact: "low",
+      },
+      {
+        id: "a2",
+        text: "Currency is always EUR.",
+        status: "unconfirmed",
+        impact: "medium",
+      },
+    ],
+  },
+  // businessContext intentionally omitted — approve must stay disabled.
+  seedSession(
+    "ses_gate1_blocked",
+    DEV_OWNER,
+    "Gate 1 — missing context (e2e fixture)",
+    4,
+    1,
+    0,
+    {
+      name: "Gate 1 blocked fixture",
+      description: "",
+      goal: "",
+      steps: [{ id: "input", name: "Input", type: "io" }],
+    },
+  ),
+  seedSession(
+    "ses_gate2_pending",
+    DEV_OWNER,
+    "Gate 2 — pending review (e2e fixture)",
+    9,
+    1,
+    0,
+    {
+      name: "Gate 2 fixture",
+      description: "",
+      goal: "",
+      steps: [
+        { id: "input", name: "Input", type: "io" },
+        { id: "process", name: "Process", type: "ai", component: "LLM" },
+      ],
+    },
+  ),
+  seedSession(
+    "ses_ui_basics",
+    DEV_OWNER,
+    "UI basics (e2e fixture)",
+    6,
+    1,
+    0,
+    {
+      name: "UI basics fixture",
+      description: "",
+      goal: "",
+      steps: [
+        { id: "input", name: "Input", type: "io" },
+        { id: "process", name: "Process", type: "ai", component: "LLM" },
+      ],
+    },
+    [
+      {
+        id: "msg_md_1",
+        role: "user",
+        content: "What components are involved?",
+        createdAt: new Date(0).toISOString(),
+      },
+      {
+        id: "msg_md_2",
+        role: "assistant",
+        // Markdown fixture: bold, a list item, and inline code — checks
+        // renderMarkdown() actually produces HTML, not raw *­/`-`/`` ` ``.
+        content:
+          "Here's what's involved:\n\n- **Component A** handles intake\n- Component B does `lookup(id)`\n",
+        createdAt: new Date(1).toISOString(),
+      },
+    ],
+  ),
   ];
 }
 
@@ -493,6 +606,23 @@ function applyTransition(s: WizardSession, event: WizardEvent): WizardSession {
 }
 
 // Advance to the next step. On a gate step, blocked until approved.
+/**
+ * Dev/test only: put a session on a given step directly.
+ *
+ * Gathering (steps 1-3) deliberately has no UI affordance to advance — the
+ * agent moves the session on once it has collected the requirements
+ * (GatheringAdvanceButton only explains that). E2E specs that need a session
+ * further along therefore cannot click their way there in mock mode, and this
+ * is how they say so instead. Guarded by DEV_AUTH at the route.
+ */
+export function setSessionStep(id: string, step: number): WizardSession | undefined {
+  const s = getSession(id);
+  if (!s) return undefined;
+  s.step = Math.min(Math.max(1, Math.trunc(step)), PHASE_COUNT);
+  s.updatedAt = new Date().toISOString();
+  return s;
+}
+
 export function advanceSession(id: string): WizardSession | undefined {
   const s = getSession(id);
   if (!s) return s;
@@ -513,43 +643,63 @@ export function approveGate(id: string): WizardSession | undefined {
   return applyTransition(s, "APPROVE_GATE");
 }
 
-// Reject the current gate. Stays on the gate step with a rejected status.
-export function rejectGate(id: string): WizardSession | undefined {
-  const s = getSession(id);
-  if (!s) return s;
-  return applyTransition(s, "REJECT_GATE");
-}
-
-// Request changes: send the session back to the step before the gate for
-// revision and record the reviewer feedback in the chat. The live agent that
-// acts on the feedback is wired in #29–31; here it is mocked.
-export function requestGateChanges(
-  id: string,
+// Record the reviewer's reason plus the wizard's acknowledgement in the chat.
+function pushGateFeedback(
+  s: WizardSession,
   feedback: string,
   ack: string,
-): WizardSession | undefined {
-  const s = getSession(id);
-  if (!s) return s;
-  const t = transition({ step: s.step, gateStatus: s.gateStatus }, "REQUEST_CHANGES");
-  if (t.noop) return s;
-  s.step = t.state.step;
-  s.gateStatus = t.state.gateStatus;
-  s.status = "active";
+): void {
   const mkId = () => "msg_" + crypto.randomUUID().slice(0, 8);
-  if (feedback.trim()) {
-    s.messages.push({
-      id: mkId(),
-      role: "user",
-      content: feedback,
-      createdAt: now(),
-    });
-  }
+  s.messages.push({
+    id: mkId(),
+    role: "user",
+    content: feedback,
+    createdAt: now(),
+  });
   s.messages.push({
     id: mkId(),
     role: "assistant",
     content: ack,
     createdAt: now(),
   });
+}
+
+// Reject the current gate. Stays on the gate step with a rejected status, and
+// the reason goes into the chat — a rejection with nothing visible was the bug
+// in #126, so an empty reason is refused.
+export function rejectGate(
+  id: string,
+  feedback: string,
+  ack: string,
+): WizardSession | undefined {
+  const s = getSession(id);
+  if (!s || !feedback.trim()) return s;
+  const t = transition({ step: s.step, gateStatus: s.gateStatus }, "REJECT_GATE");
+  if (t.noop) return s;
+  s.step = t.state.step;
+  s.gateStatus = t.state.gateStatus;
+  s.status = "active";
+  pushGateFeedback(s, feedback, ack);
+  s.updatedAt = now();
+  return s;
+}
+
+// Request changes: keep the session on the gate and record the reviewer
+// feedback in the chat for the agent to act on (#126 — this used to step the
+// session back a phase with no explanation).
+export function requestGateChanges(
+  id: string,
+  feedback: string,
+  ack: string,
+): WizardSession | undefined {
+  const s = getSession(id);
+  if (!s || !feedback.trim()) return s;
+  const t = transition({ step: s.step, gateStatus: s.gateStatus }, "REQUEST_CHANGES");
+  if (t.noop) return s;
+  s.step = t.state.step;
+  s.gateStatus = t.state.gateStatus;
+  s.status = "active";
+  pushGateFeedback(s, feedback, ack);
   s.updatedAt = now();
   return s;
 }
