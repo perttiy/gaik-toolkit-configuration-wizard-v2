@@ -109,3 +109,9 @@ agent chat endpoint won't work.
   until the DB is reachable.
 - **Not wired into CI** — deployment is manual via `deploy.sh`, matching the
   demo app.
+- **No test gate on deploy** — pushing a release tag deploys to staging
+  regardless of CI status. Confirm CI is green before tagging.
+- **RAHTI_TOKEN expiry** — the Rahti `oc login` / registry token (CSC
+  service-account token, not stored in this repo) is **~1 year** long. Record
+  its expiry date here and renew before then, or deploys silently stop working:
+  - RAHTI_TOKEN expires: `TODO — fill from CSC` (created ~09/2026).
