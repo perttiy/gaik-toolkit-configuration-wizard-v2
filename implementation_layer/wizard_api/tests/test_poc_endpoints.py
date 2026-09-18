@@ -307,3 +307,38 @@ def test_schema_and_prompt_alone_are_built_on_not_kept_as_a_package(client, db_s
     assert read("schemas", "output_schema.py") == approved_schema
     assert read("prompts", "extraction_requirements.md") == approved_prompt
     assert "run_poc.py" in again["files"]
+
+
+@requires_postgres
+@requires_scaffolder
+def test_regenerating_never_overwrites_the_agents_wiring(client, db_session) -> None:
+    """A composed pipeline has no template, so the scaffolder writes a TODO
+    stub and the agent wires it in the conversation. Pressing "Aja PoC" again
+    used to clear "our" run_poc.py and put the stub back over that work (found
+    in a live UC02 run with VisionExtractor)."""
+    created = client.post("/sessions", json={"user_id": "poc-user", "title": "UC02"}).json()
+    session_id = created["id"]
+    output_dir = _session_output_dir(db_session, session_id)
+    _write_draft(output_dir, _AGREED_SPEC)
+
+    first = client.post(f"/sessions/{session_id}/poc/generate").json()
+    assert first["source"] == "scaffolder"
+
+    run_poc = os.path.join(output_dir, "poc", "run_poc.py")
+    wired = (
+        '"""Wired by the agent."""\n'
+        "from gaik.software_components.vision_extractor import VisionExtractor\n"
+    )
+    with open(run_poc, "w", encoding="utf-8") as fh:
+        fh.write(wired)
+
+    again = client.post(f"/sessions/{session_id}/poc/generate").json()
+    assert again["source"] == "agent"
+    assert again["scaffolded"] is False
+    with open(run_poc, encoding="utf-8") as fh:
+        assert fh.read() == wired
+
+    forced = client.post(f"/sessions/{session_id}/poc/generate?force=true").json()
+    assert forced["source"] == "scaffolder"
+    with open(run_poc, encoding="utf-8") as fh:
+        assert "Wired by the agent" not in fh.read()

@@ -110,6 +110,41 @@ def _clear_previous(poc_dir: Path, manifest: dict[str, Any]) -> None:
             pass
 
 
+def _file_hash(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _agent_edited(poc_dir: Path, manifest: dict[str, Any]) -> bool:
+    """Whether the agent rewrote any file our last run wrote.
+
+    The agent finishes a composed pipeline by wiring the ``run_poc.py`` we
+    scaffolded (there is no template for it). A regeneration that cleared "our"
+    files would silently put the TODO stub back over that work. Manifests
+    written before hashes were recorded cannot tell, and count as unedited.
+    """
+    for relative, digest in (manifest.get("hashes") or {}).items():
+        target = poc_dir / relative
+        try:
+            if target.is_file() and _file_hash(target) != digest:
+                return True
+        except OSError:  # pragma: no cover - unreadable counts as not ours to judge
+            continue
+    return False
+
+
+def _agent_package(poc_dir: Path) -> dict[str, Any]:
+    return {
+        "generated": True,
+        "source": "agent",
+        "scaffolded": False,
+        "pattern": "",
+        "template_wired": True,
+        "files": _relative_files(poc_dir),
+        "regenerated": False,
+        "blueprint_changed": False,
+    }
+
+
 def _relative_files(poc_dir: Path) -> list[str]:
     return sorted(
         str(path.relative_to(poc_dir))
@@ -146,20 +181,13 @@ def generate_poc(
     poc_dir = root / "poc"
     previous = _read_manifest(root)
 
-    if previous is None and (poc_dir / _PACKAGE_ENTRYPOINT).is_file() and not force:
-        existing = _relative_files(poc_dir)
-        if existing:
+    if not force:
+        if previous is None and (poc_dir / _PACKAGE_ENTRYPOINT).is_file():
             # No manifest and an entrypoint of its own: the agent built the package.
-            return {
-                "generated": True,
-                "source": "agent",
-                "scaffolded": False,
-                "pattern": "",
-                "template_wired": True,
-                "files": existing,
-                "regenerated": False,
-                "blueprint_changed": False,
-            }
+            return _agent_package(poc_dir)
+        if previous is not None and _agent_edited(poc_dir, previous):
+            # We scaffolded it, then the agent wired it: the package is now theirs.
+            return _agent_package(poc_dir)
 
     v1 = build_v1_blueprint(
         v2_blueprint, session_id=session_id, target_output_spec=target_output_spec
@@ -188,8 +216,13 @@ def generate_poc(
     fingerprint = _blueprint_fingerprint(v1)
     try:
         with open(root / MANIFEST_NAME, "w", encoding="utf-8") as fh:
+            ours = [f for f in files if f not in agent_files]
             json.dump(
-                {"blueprint": fingerprint, "files": [f for f in files if f not in agent_files]},
+                {
+                    "blueprint": fingerprint,
+                    "files": ours,
+                    "hashes": {f: _file_hash(poc_dir / f) for f in ours},
+                },
                 fh,
                 indent=2,
             )
