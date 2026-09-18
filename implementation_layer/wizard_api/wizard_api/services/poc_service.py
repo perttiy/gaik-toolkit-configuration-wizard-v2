@@ -38,6 +38,12 @@ MANIFEST_NAME = ".wizard-scaffold.json"
 #: results of an earlier run, and hand-curated eval ground truth.
 _PRESERVED_DIRS = ("sample_input", "output", os.path.join("evals", "ground_truth"))
 
+#: What makes ``poc/`` a package. The agent writes ``schemas/`` and ``prompts/``
+#: already at the schema-design step, long before any package exists, so those
+#: alone are work in progress for the scaffolder to build on — not a finished
+#: PoC to keep.
+_PACKAGE_ENTRYPOINT = "run_poc.py"
+
 
 def solution_wizard_available() -> bool:
     return _SOLUTION_WIZARD_AVAILABLE
@@ -105,7 +111,11 @@ def _clear_previous(poc_dir: Path, manifest: dict[str, Any]) -> None:
 
 
 def _relative_files(poc_dir: Path) -> list[str]:
-    return sorted(str(path.relative_to(poc_dir)) for path in poc_dir.rglob("*") if path.is_file())
+    return sorted(
+        str(path.relative_to(poc_dir))
+        for path in poc_dir.rglob("*")
+        if path.is_file() and "__pycache__" not in path.relative_to(poc_dir).parts
+    )
 
 
 def generate_poc(
@@ -136,10 +146,10 @@ def generate_poc(
     poc_dir = root / "poc"
     previous = _read_manifest(root)
 
-    if previous is None and poc_dir.is_dir():
+    if previous is None and (poc_dir / _PACKAGE_ENTRYPOINT).is_file() and not force:
         existing = _relative_files(poc_dir)
-        if existing and not force:
-            # No manifest and a populated poc/ means the agent got there first.
+        if existing:
+            # No manifest and an entrypoint of its own: the agent built the package.
             return {
                 "generated": True,
                 "source": "agent",
@@ -159,6 +169,13 @@ def generate_poc(
     except Exception as exc:  # pydantic ValidationError and friends
         raise PocGenerationError(f"blueprint is not scaffoldable: {exc}") from exc
 
+    # Files already here that our last run did not write are the agent's — the
+    # schema and extraction prompt approved in the conversation. The scaffolder
+    # builds on them, and leaving them out of the manifest keeps a later
+    # regeneration from deleting them.
+    ours_before = set(previous.get("files", [])) if previous else set()
+    agent_files = set(_relative_files(poc_dir)) - ours_before if poc_dir.is_dir() else set()
+
     if previous:
         _clear_previous(poc_dir, previous)
 
@@ -171,7 +188,11 @@ def generate_poc(
     fingerprint = _blueprint_fingerprint(v1)
     try:
         with open(root / MANIFEST_NAME, "w", encoding="utf-8") as fh:
-            json.dump({"blueprint": fingerprint, "files": files}, fh, indent=2)
+            json.dump(
+                {"blueprint": fingerprint, "files": [f for f in files if f not in agent_files]},
+                fh,
+                indent=2,
+            )
     except OSError as exc:  # pragma: no cover - the package itself is fine
         raise PocGenerationError(f"could not record the scaffold manifest: {exc}") from exc
 

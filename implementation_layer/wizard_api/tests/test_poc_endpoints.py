@@ -250,3 +250,60 @@ def test_generate_never_overwrites_the_agents_own_package(client, db_session) ->
     assert forced["scaffolded"] is True
     with open(os.path.join(poc, "run_poc.py"), encoding="utf-8") as fh:
         assert "written by the agent" not in fh.read()
+
+
+@requires_postgres
+@requires_scaffolder
+def test_schema_and_prompt_alone_are_built_on_not_kept_as_a_package(client, db_session) -> None:
+    """The agent writes schemas/ and prompts/ at the schema-design step, long
+    before a package exists. Treating those as "the agent's package" shipped a
+    download with no run_poc.py (found in a live UC01 run). They are the
+    approved schema and prompt: the scaffolder builds the package around them,
+    keeps them as written, and a regeneration must not delete them."""
+    created = client.post("/sessions", json={"user_id": "poc-user", "title": "UC01"}).json()
+    session_id = created["id"]
+    output_dir = _session_output_dir(db_session, session_id)
+    _write_draft(output_dir, _AGREED_SPEC)
+
+    poc = os.path.join(output_dir, "poc")
+    approved_schema = (
+        "from pydantic import BaseModel\n\n"
+        "class IncidentReport(BaseModel):\n"
+        "    incident_id: str  # approved in the conversation\n"
+    )
+    approved_prompt = "# Extraction requirements — approved in the conversation\n"
+    os.makedirs(os.path.join(poc, "schemas", "__pycache__"), exist_ok=True)
+    os.makedirs(os.path.join(poc, "prompts"), exist_ok=True)
+    with open(os.path.join(poc, "schemas", "output_schema.py"), "w", encoding="utf-8") as fh:
+        fh.write(approved_schema)
+    with open(
+        os.path.join(poc, "schemas", "output_schema_requirements.json"), "w", encoding="utf-8"
+    ) as fh:
+        json.dump({"schema_name": "IncidentReport"}, fh)
+    with open(
+        os.path.join(poc, "prompts", "extraction_requirements.md"), "w", encoding="utf-8"
+    ) as fh:
+        fh.write(approved_prompt)
+    with open(
+        os.path.join(poc, "schemas", "__pycache__", "output_schema.cpython-311.pyc"), "wb"
+    ) as fh:
+        fh.write(b"\x00")
+
+    body = client.post(f"/sessions/{session_id}/poc/generate").json()
+    assert body["source"] == "scaffolder"
+    assert body["scaffolded"] is True
+    assert {"run_poc.py", "requirements.txt", "README.md"} <= set(body["files"])
+    assert not any("__pycache__" in f for f in body["files"])
+
+    def read(*parts: str) -> str:
+        with open(os.path.join(poc, *parts), encoding="utf-8") as fh:
+            return fh.read()
+
+    assert read("schemas", "output_schema.py") == approved_schema
+    assert read("prompts", "extraction_requirements.md") == approved_prompt
+
+    again = client.post(f"/sessions/{session_id}/poc/generate").json()
+    assert again["regenerated"] is True
+    assert read("schemas", "output_schema.py") == approved_schema
+    assert read("prompts", "extraction_requirements.md") == approved_prompt
+    assert "run_poc.py" in again["files"]
