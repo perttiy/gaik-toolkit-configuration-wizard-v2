@@ -64,7 +64,7 @@ export type BlueprintStep = {
   type: BlueprintStepType;
   component?: string;
   description?: string;
-  /** Component configuration/settings (SME-4, Umair 14 Aug — not just names). */
+  /** Component configuration/settings (SME-4, GAIK review 14 Aug — not just names). */
   settings?: Record<string, string>;
 };
 
@@ -147,7 +147,7 @@ function outputDirFor(id: string): string {
 }
 
 /**
- * Dummy blueprint for a brand-new session (MIC012 / Pertti).
+ * Dummy blueprint for a brand-new session (Pertti / GAIK review).
  * Gives BPMN a few editable elements until schema design (#25) supplies real fields.
  */
 export function defaultBlueprint(title: string): Blueprint {
