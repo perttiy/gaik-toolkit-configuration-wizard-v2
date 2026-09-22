@@ -44,6 +44,9 @@ export const PHASE_COUNT = PHASES.length; // 13
 /** 1-based step when BPMN visual workflow is generated (onboarding phase 8). */
 export const BPMN_VISUAL_STEP = 8;
 
+/** 1-based step when the PoC package is generated (onboarding phase 10). */
+export const POC_STEP = 10;
+
 export function isBpmnVisualPhase(step: number): boolean {
   return step >= BPMN_VISUAL_STEP;
 }
@@ -64,7 +67,7 @@ export type BlueprintStep = {
   type: BlueprintStepType;
   component?: string;
   description?: string;
-  /** Component configuration/settings (SME-4, Umair 14 Aug — not just names). */
+  /** Component configuration/settings (SME-4, #22 — not just names). */
   settings?: Record<string, string>;
 };
 
@@ -147,7 +150,7 @@ function outputDirFor(id: string): string {
 }
 
 /**
- * Dummy blueprint for a brand-new session (MIC012 / Pertti).
+ * Dummy blueprint for a brand-new session (#74).
  * Gives BPMN a few editable elements until schema design (#25) supplies real fields.
  */
 export function defaultBlueprint(title: string): Blueprint {
