@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 /**
- * Demo — create from scratch → dummy BPMN → JSON + BPMN edits (MIC012).
+ * Demo — create from scratch → dummy BPMN → JSON + BPMN edits.
  *
  *   PLAYWRIGHT_SKIP_WEBSERVER=true \
  *   PLAYWRIGHT_BASE_URL=http://127.0.0.1:3026 \
