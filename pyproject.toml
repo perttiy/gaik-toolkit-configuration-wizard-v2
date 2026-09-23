@@ -163,6 +163,9 @@ vision-extract = [
     "anthropic>=0.43.0",
     "google-auth>=2.0.0",
     "requests>=2.31.0",
+    # VisionExtractor imports the multimodal parser's config, which pulls
+    # markdown_it — without it the component cannot even be imported.
+    "markdown-it-py>=3.0.0",
 ]
 
 # Multi-provider LLM client adapters used across software_components/llm/.
