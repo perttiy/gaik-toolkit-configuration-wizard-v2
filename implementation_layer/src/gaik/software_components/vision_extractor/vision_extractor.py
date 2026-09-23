@@ -218,6 +218,27 @@ def _combine_with_verification(data: dict, verification: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 
+#: Regex constructs the strict-output grammar (an RE2-style engine) cannot
+#: compile. A schema carrying one is accepted by the API and then yields zero
+#: output tokens with status=incomplete — no error naming the pattern. Pydantic
+#: renders ``decimal.Decimal`` with exactly such a lookahead, so any money field
+#: silently produced an empty extraction. Measured 23 Sep 2026: the same schema
+#: with only the pattern removed extracts correctly.
+_UNSUPPORTED_REGEX = ("(?=", "(?!", "(?<=", "(?<!", "\\1", "\\2")
+
+
+def _drop_uncompilable_patterns(schema: dict) -> dict:
+    """Remove ``pattern`` constraints the strict grammar cannot compile.
+
+    The pattern only narrows values the schema already types; dropping it keeps
+    the structure intact and is far better than an empty response.
+    """
+    pattern = schema.get("pattern")
+    if isinstance(pattern, str) and any(tok in pattern for tok in _UNSUPPORTED_REGEX):
+        schema = {k: v for k, v in schema.items() if k != "pattern"}
+    return schema
+
+
 def _incomplete_with_no_output(response: object) -> bool:
     """The shape the API returns when it cannot honour a strict schema."""
     if getattr(response, "status", None) != "incomplete":
@@ -234,7 +255,7 @@ def _make_schema_strict(schema: dict) -> dict:
     client.beta.chat.completions.parse() does internally but for the
     Responses API which requires an explicit raw schema.
     """
-    schema = schema.copy()
+    schema = _drop_uncompilable_patterns(schema.copy())
     if "$ref" in schema:
         # OpenAI strict JSON schema rejects sibling keywords next to $ref
         # (for example {"$ref": "...", "description": "..."}).
@@ -247,6 +268,12 @@ def _make_schema_strict(schema: dict) -> dict:
         schema["$defs"] = {k: _make_schema_strict(v) for k, v in schema["$defs"].items()}
     if schema.get("type") == "array" and "items" in schema:
         schema["items"] = _make_schema_strict(schema["items"])
+    # Optional fields arrive as anyOf branches (``Decimal | None`` and friends).
+    # Without this the branches keep whatever pydantic emitted — including the
+    # patterns above, and objects that never get additionalProperties=false.
+    for combinator in ("anyOf", "oneOf", "allOf"):
+        if isinstance(schema.get(combinator), list):
+            schema[combinator] = [_make_schema_strict(b) for b in schema[combinator]]
     return schema
 
 
@@ -934,10 +961,13 @@ class VisionExtractor:
 
         text = response.output_text or ""
         if not text.strip() and _incomplete_with_no_output(response):
-            # A strict schema the grammar cannot compile comes back as
-            # status=incomplete with zero output tokens and no error naming the
-            # cause. Retrying without the grammar still shapes the answer by the
-            # schema; only the guarantee is lost, which beats returning nothing.
+            # Strict structured output silently yields nothing once the schema
+            # grows past a handful of object-valued properties: the API reports
+            # status=incomplete / max_output_tokens with zero output tokens
+            # instead of rejecting the schema. Measured 23 Sep 2026 against
+            # gpt-4o — three verifiable fields return data, four return nothing,
+            # and the same schema with strict=False extracts correctly. The
+            # schema still shapes the answer; only the grammar guarantee is lost.
             response = client.responses.create(
                 **request, text={"format": {**response_format, "strict": False}}
             )
