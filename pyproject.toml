@@ -340,6 +340,9 @@ exclude = ["gaik.tests", "gaik.*.tests"]
 [tool.setuptools_scm]
 version_file = "implementation_layer/src/gaik/_version.py"
 tag_regex = "^v(?P<version>\\d+\\.\\d+\\.\\d+)$"
+# Only release tags describe a version. Without this, git describe hands
+# setuptools-scm a dev-YYYY-MM-DD-<sha> or wizard-v2-* tag and the build fails.
+git_describe_command = "git describe --dirty --tags --long --match v*.*.*"
 fallback_version = "0.0.0"
 version_scheme = "no-guess-dev"
 local_scheme = "no-local-version"
