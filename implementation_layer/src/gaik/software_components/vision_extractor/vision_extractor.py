@@ -9,7 +9,7 @@ import json
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Union, get_args, get_origin
+from typing import Any, Literal, Union, get_args, get_origin
 
 import requests
 from pydantic import BaseModel, Field, create_model
@@ -43,6 +43,17 @@ from .prompts import SYSTEM_PROMPTS, USER_PROMPTS, VERIFICATION_PROMPT
 
 ModelProvider = Literal["openai", "claude", "google"]
 ReasoningEffort = Literal["low", "medium", "high"]
+
+#: OpenAI model families that accept ``reasoning``. Sending the parameter to
+#: any other model is a hard 400 ("Unsupported parameter: 'reasoning.effort'"),
+#: so a plain gpt-4o deployment could not be used at all.
+_OPENAI_REASONING_PREFIXES = ("o1", "o3", "o4", "gpt-5")
+
+
+def _supports_reasoning(model: str) -> bool:
+    return model.lower().startswith(_OPENAI_REASONING_PREFIXES)
+
+
 RequirementsSpec = ExtractionRequirements | CompositeExtractionRequirements
 
 # ---------------------------------------------------------------------------
@@ -205,6 +216,14 @@ def _combine_with_verification(data: dict, verification: dict) -> dict:
 # ---------------------------------------------------------------------------
 # Schema strict-mode helper
 # ---------------------------------------------------------------------------
+
+
+def _incomplete_with_no_output(response: object) -> bool:
+    """The shape the API returns when it cannot honour a strict schema."""
+    if getattr(response, "status", None) != "incomplete":
+        return False
+    usage = getattr(response, "usage", None)
+    return bool(usage) and getattr(usage, "output_tokens", 0) == 0
 
 
 def _make_schema_strict(schema: dict) -> dict:
@@ -896,24 +915,45 @@ class VisionExtractor:
         content.append({"type": "input_text", "text": user_prompt})
 
         t0 = time.perf_counter()
-        response = client.responses.create(
-            model=self.model,
-            instructions=system_prompt,
-            input=[{"role": "user", "content": content}],
-            reasoning={"effort": self.reasoning_effort},
-            text={
-                "format": {
-                    "type": "json_schema",
-                    "name": extraction_model.__name__[:64],
-                    "schema": _make_schema_strict(extraction_model.model_json_schema()),
-                    "strict": True,
-                }
-            },
-            max_output_tokens=32768,
-        )
+        request: dict[str, Any] = {
+            "model": self.model,
+            "instructions": system_prompt,
+            "input": [{"role": "user", "content": content}],
+            "max_output_tokens": 32768,
+        }
+        if _supports_reasoning(self.model):
+            request["reasoning"] = {"effort": self.reasoning_effort}
+        response_format = {
+            "type": "json_schema",
+            "name": extraction_model.__name__[:64],
+            "schema": _make_schema_strict(extraction_model.model_json_schema()),
+            "strict": True,
+        }
+        response = client.responses.create(**request, text={"format": response_format})
         elapsed = time.perf_counter() - t0
 
-        result_dict = json.loads(response.output_text)
+        text = response.output_text or ""
+        if not text.strip() and _incomplete_with_no_output(response):
+            # A strict schema the grammar cannot compile comes back as
+            # status=incomplete with zero output tokens and no error naming the
+            # cause. Retrying without the grammar still shapes the answer by the
+            # schema; only the guarantee is lost, which beats returning nothing.
+            response = client.responses.create(
+                **request, text={"format": {**response_format, "strict": False}}
+            )
+            text = response.output_text or ""
+        if not text.strip():
+            status = getattr(response, "status", "unknown")
+            details = getattr(response, "incomplete_details", None)
+            reason = getattr(details, "reason", None) if details else None
+            raise RuntimeError(
+                f"OpenAI returned no text for model {self.model!r} "
+                f"(status={status}"
+                + (f", incomplete: {reason}" if reason else "")
+                + "). Nothing to parse — check that the model is available to "
+                "this key and that max_output_tokens leaves room for the answer."
+            )
+        result_dict = json.loads(text)
         usage_dict = _extract_openai_usage(response)
         usage = (
             build_usage_record("openai", self.model, usage_dict, elapsed)
