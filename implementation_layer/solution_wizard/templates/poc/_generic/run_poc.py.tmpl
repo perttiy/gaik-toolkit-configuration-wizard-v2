@@ -76,6 +76,21 @@ def _load_output_schema(schema_dir: Path):
 
     Returns (schema_class, requirements_obj) on success, (None, None) otherwise.
     All schema files are named output_schema.* regardless of the blueprint class name.
+
+    Pass BOTH values to the extracting component:
+
+        schema_class, requirements_obj = _load_output_schema(SCHEMA_DIR)
+        result = extractor.extract(
+            file_paths=[...],
+            user_requirements=user_requirements,
+            extraction_model=schema_class,
+            requirements=requirements_obj,
+        )
+
+    Given only one of them, extract() silently falls back to deriving a fresh
+    schema from the prose at runtime: two extra LLM calls, a different shape on
+    every run, and the schema the user approved at the Specification step is not
+    the one used.
     """
     import importlib.util, json as _json
     schema_path = schema_dir / "output_schema.py"
@@ -95,12 +110,24 @@ def _load_output_schema(schema_dir: Path):
 
     try:
         data = _json.loads(req_path.read_text(encoding="utf-8"))
-        from gaik.software_components.extractor.schema import ExtractionRequirements
-        requirements = ExtractionRequirements(**data["requirements"])
+        from gaik.software_components.extractor.schema import (
+            CompositeExtractionRequirements,
+            ExtractionRequirements,
+        )
+        # A record with a repeated collection is a composite. Rebuilding it as a
+        # flat ExtractionRequirements makes the component copy the header fields
+        # onto every row, and validation then rejects the result.
+        if data.get("requirements_type") == "parent_with_nested_list":
+            requirements = CompositeExtractionRequirements(**data["requirements"])
+        else:
+            requirements = ExtractionRequirements(**data["requirements"])
         spec = importlib.util.spec_from_file_location(data["model_name"], schema_path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         schema_class = getattr(module, data["model_name"])
+        # The generated schema uses postponed annotations, so a nested item model
+        # is still a forward reference at this point.
+        schema_class.model_rebuild(_types_namespace=vars(module))
         print("Using approved schema (requirements unchanged).")
         return schema_class, requirements
     except Exception as exc:
