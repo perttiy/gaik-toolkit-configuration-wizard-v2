@@ -99,3 +99,15 @@ def test_the_run_container_gets_no_cluster_secrets_beyond_the_model_key(
         if "valueFrom" in e and "secretKeyRef" in e["valueFrom"]
     }
     assert secret_keys == {"AZURE_API_KEY"}
+
+
+def test_the_run_container_starts_the_entrypoint_the_scaffolder_writes(
+    pod_spec: dict,
+) -> None:
+    """``poc_service._PACKAGE_ENTRYPOINT`` is ``run_poc.py``, and the templates
+    under ``solution_wizard/templates/poc/`` all render that name. A manifest
+    naming anything else fails every run at once, before the PoC's own code has
+    a chance to be wrong."""
+    run = next(c for c in pod_spec["containers"] if c["name"] == "poc-run")
+    assert run["command"] == ["python", "run_poc.py"]
+    assert run["workingDir"] == "/workspace/poc"

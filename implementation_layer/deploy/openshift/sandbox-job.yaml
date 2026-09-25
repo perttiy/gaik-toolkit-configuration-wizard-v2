@@ -88,7 +88,7 @@ spec:
         - name: poc-run
           image: IMAGE_PLACEHOLDER
           workingDir: /workspace/poc
-          command: ["python", "run.py"]
+          command: ["python", "run_poc.py"]
           env:
             # The model key the PoC needs. Nothing else from the cluster is
             # exposed — in particular not the service token or the database URL.
