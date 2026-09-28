@@ -12,7 +12,8 @@ import {
   wizardAgentChatEnabled,
 } from "@/lib/wizard-api-client";
 import { withLogging } from "@/lib/with-logging";
-import { setContextUserId } from "@/lib/request-context";
+import { setContextUserId, getTraceId } from "@/lib/request-context";
+import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
 
@@ -62,8 +63,15 @@ export const POST = withLogging("chat.post", async (
       if (upstream.ok && upstream.body) {
         return new Response(upstream.body, { headers: SSE_HEADERS });
       }
-    } catch {
-      // fall through to the mock reply
+      logger.warn(
+        { traceId: getTraceId(), sessionId: id, status: upstream.status },
+        "chat.post agent upstream returned non-ok; falling back to mock reply",
+      );
+    } catch (err) {
+      logger.error(
+        { traceId: getTraceId(), err, sessionId: id },
+        "chat.post agent upstream threw; falling back to mock reply",
+      );
     }
   }
 
@@ -85,7 +93,11 @@ export const POST = withLogging("chat.post", async (
         await postMessage(id, userMessage, fullReply);
         controller.enqueue(sse({ done: true }));
         controller.close();
-      } catch {
+      } catch (err) {
+        logger.error(
+          { traceId: getTraceId(), err, sessionId: id },
+          "chat.post reply stream failed",
+        );
         controller.enqueue(sse({ error: true }));
         controller.close();
       }

@@ -22,10 +22,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import time
 from collections.abc import AsyncGenerator
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 try:
     from claude_agent_sdk import (
@@ -289,6 +292,7 @@ async def _stream_turn(
                     yield sse({"done": True})
                 break
     except Exception as exc:  # noqa: BLE001
+        logger.exception("agent chat turn failed for session %s", session.get("id"))
         yield sse({"error": True, "message": str(exc)})
     finally:
         session["last_active"] = time.time()
