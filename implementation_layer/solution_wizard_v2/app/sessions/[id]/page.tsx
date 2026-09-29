@@ -229,6 +229,7 @@ export default async function SessionPage({
           thinkingLabel={t.chatThinking}
           stillWorkingLabel={t.chatStillWorking}
           emptyReplyLabel={t.chatEmptyReply}
+          cutOffLabel={t.chatCutOff}
           wide={isGathering}
           hideChatLabel={t.hideChat}
           showChatLabel={t.showChat}
