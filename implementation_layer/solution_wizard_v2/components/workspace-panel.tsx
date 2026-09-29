@@ -204,6 +204,18 @@ function WorkflowFlowTab({
 
 type Tab = "flow" | "json" | "plan" | "poc";
 type PocStatus = "idle" | "running" | "success" | "failed";
+/** A sandbox run's own lifecycle, reported by wizard_api — not derived here. */
+type RunPhase =
+  | "idle"
+  | "pending"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "timeout"
+  | "error";
+
+/** A long run can print a lot; keep the tail rather than the whole history. */
+const MAX_LOG_LINES = 2000;
 
 const TABS: Tab[] = ["flow", "json", "plan", "poc"];
 
@@ -227,6 +239,10 @@ export function WorkspacePanel({
   const [pocStatus, setPocStatus] = useState<PocStatus>("idle");
   // Files the agent's PoC scaffolder produced (null = not yet loaded).
   const [pocGenerated, setPocGenerated] = useState(false);
+  const [runPhase, setRunPhase] = useState<RunPhase>("idle");
+  const [runMessage, setRunMessage] = useState<string | null>(null);
+  const [runLogs, setRunLogs] = useState<string[]>([]);
+  const logEndRef = useRef<HTMLDivElement | null>(null);
   const [pocFiles, setPocFiles] = useState<string[]>([]);
   const baseId = useId();
 
@@ -277,6 +293,87 @@ export function WorkspacePanel({
     io: t.wsStepIo,
     ai: t.wsStepAi,
     human_review: t.wsStepHuman,
+  };
+
+  /** Start a sandbox run and follow it (#94). Nothing here simulates: a run
+   * that did not happen cannot report that it did. */
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ block: "end" });
+  }, [runLogs.length, logs.length]);
+
+  async function runInSandbox() {
+    setRunPhase("pending");
+    setRunMessage(null);
+    setRunLogs([]);
+
+    let runId: string;
+    try {
+      const started = await fetch(`/api/sessions/${sessionId}/runs`, { method: "POST" });
+      const body = await started.json().catch(() => ({}));
+      if (!started.ok) {
+        setRunPhase("error");
+        setRunMessage(body?.detail?.message ?? body?.message ?? t.pocRunError);
+        return;
+      }
+      runId = body.run_id;
+    } catch {
+      setRunPhase("error");
+      setRunMessage(t.pocRunError);
+      return;
+    }
+
+    setRunPhase("running");
+    try {
+      const res = await fetch(`/api/sessions/${sessionId}/runs/${runId}/stream`);
+      if (!res.ok || !res.body) throw new Error("stream failed");
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const frames = buffer.split("\n\n");
+        buffer = frames.pop() ?? "";
+        for (const frame of frames) {
+          const line = frame.startsWith("data: ") ? frame.slice(6) : frame;
+          if (!line.trim()) continue;
+          const evt = JSON.parse(line);
+          if (typeof evt.log === "string") {
+            setRunLogs((prev) => {
+              const next = [...prev, evt.log];
+              return next.length > MAX_LOG_LINES ? next.slice(-MAX_LOG_LINES) : next;
+            });
+          }
+          if (evt.error) {
+            setRunPhase("error");
+            setRunMessage(evt.message ?? t.pocRunError);
+            return;
+          }
+          if (evt.done) {
+            setRunPhase((evt.phase as RunPhase) ?? "failed");
+            if (evt.message) setRunMessage(evt.message);
+          }
+        }
+      }
+    } catch {
+      setRunPhase("error");
+      setRunMessage(t.pocRunError);
+    }
+  }
+
+  // A run's own output takes over the terminal once one has started; before
+  // that it shows what generation printed.
+  const shownLogs = runPhase === "idle" ? logs : runLogs;
+
+  const RUN_PHASE_LABEL: Record<RunPhase, string> = {
+    idle: "",
+    pending: t.pocPhasePending,
+    running: t.pocPhaseRunning,
+    succeeded: t.pocPhaseSucceeded,
+    failed: t.pocPhaseFailed,
+    timeout: t.pocPhaseTimeout,
+    error: t.pocRunError,
   };
 
   async function runPoc() {
@@ -417,6 +514,34 @@ export function WorkspacePanel({
                         ? t.pocRerun
                         : t.pocRun}
                   </button>
+                  {/* The real run, beside generation. Enabled only once a
+                      package exists — a run with nothing to run is the state
+                      the old simulated button reported as success. */}
+                  <button
+                    type="button"
+                    onClick={runInSandbox}
+                    disabled={!pocGenerated || runPhase === "pending" || runPhase === "running"}
+                    className="btn-secondary"
+                    data-testid="poc-run-sandbox"
+                  >
+                    {runPhase === "running" || runPhase === "pending"
+                      ? t.pocRunning2
+                      : t.pocRunSandbox}
+                  </button>
+                  {runPhase !== "idle" && (
+                    <span
+                      data-testid="poc-run-phase"
+                      className={
+                        runPhase === "succeeded"
+                          ? "badge-success"
+                          : runPhase === "running" || runPhase === "pending"
+                            ? "badge-muted"
+                            : "badge-error"
+                      }
+                    >
+                      {RUN_PHASE_LABEL[runPhase]}
+                    </span>
+                  )}
                   {pocStatus === "success" && (
                     <span className="badge-success">{t.pocSuccess}</span>
                   )}
@@ -427,7 +552,7 @@ export function WorkspacePanel({
                   )}
                 </div>
 
-                {logs.length === 0 && pocStatus === "idle" ? (
+                {shownLogs.length === 0 && pocStatus === "idle" && runPhase === "idle" ? (
                   <p className="text-xs text-text-muted">{t.pocIdle}</p>
                 ) : (
                   <div className="flex-1 min-h-0 flex flex-col">
@@ -437,7 +562,7 @@ export function WorkspacePanel({
                       <span className="h-2.5 w-2.5 rounded-full bg-white/15" aria-hidden />
                     </div>
                     <pre className="flex-1 overflow-auto bg-term-bg p-3.5 font-mono text-xs leading-5 text-term-text whitespace-pre-wrap rounded-b-lg ring-1 ring-inset ring-white/5">
-                      {logs.map((log, i) => {
+                      {shownLogs.map((log, i) => {
                         const lower = log.toLowerCase();
                         const isErr =
                           lower.includes("error") ||
@@ -461,6 +586,7 @@ export function WorkspacePanel({
                           </div>
                         );
                       })}
+                      <div ref={logEndRef} />
                     </pre>
                   </div>
                 )}
