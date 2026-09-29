@@ -3,7 +3,7 @@ import { NextRequest } from "next/server";
 
 // The route's collaborators are mocked so the test exercises only the routing
 // logic: mock reply by default, proxy to wizard_api when the agent is enabled,
-// and graceful fallback to the mock on any upstream failure.
+// and an explicit 502 on any upstream failure — never a canned reply (T3/R2).
 vi.mock("@/lib/session-access", () => ({
   requireOwnedSession: vi.fn(),
 }));
@@ -28,6 +28,7 @@ vi.mock("@/lib/wizard-api-client", () => ({
 import { POST } from "@/app/api/sessions/[id]/chat/route";
 import { requireOwnedSession } from "@/lib/session-access";
 import { resolveChatReply } from "@/lib/chat-driver";
+import { postMessage } from "@/lib/sessions";
 import {
   openAgentChatStream,
   wizardAgentChatEnabled,
@@ -103,25 +104,27 @@ describe("POST /sessions/[id]/chat", () => {
     expect(resolveChatReply).not.toHaveBeenCalled();
   });
 
-  it("falls back to the mock when the upstream throws", async () => {
+  it("answers 502, not a canned reply, when the upstream throws", async () => {
     vi.mocked(wizardAgentChatEnabled).mockReturnValue(true);
     vi.mocked(openAgentChatStream).mockRejectedValue(
       new Error("connect ECONNREFUSED"),
     );
     const res = await post();
-    const body = await readAll(res);
-    expect(body).toContain("MOCK");
-    expect(body).toContain('"done":true');
+    expect(res.status).toBe(502);
+    expect(await res.text()).not.toContain("MOCK");
+    expect(resolveChatReply).not.toHaveBeenCalled();
+    expect(postMessage).not.toHaveBeenCalled();
   });
 
-  it("falls back to the mock when the upstream is not ok", async () => {
+  it("answers 502, not a canned reply, when the upstream is not ok", async () => {
     vi.mocked(wizardAgentChatEnabled).mockReturnValue(true);
     vi.mocked(openAgentChatStream).mockResolvedValue(
       new Response("nope", { status: 404 }),
     );
     const res = await post();
-    const body = await readAll(res);
-    expect(body).toContain("MOCK");
+    expect(res.status).toBe(502);
+    expect(resolveChatReply).not.toHaveBeenCalled();
+    expect(postMessage).not.toHaveBeenCalled();
   });
 });
 

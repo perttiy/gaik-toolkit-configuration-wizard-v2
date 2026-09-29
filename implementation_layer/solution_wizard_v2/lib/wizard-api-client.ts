@@ -85,7 +85,7 @@ export function wizardAgentChatEnabled(): boolean {
 /**
  * Open the upstream agent chat stream. Returns the raw fetch Response so the
  * caller can pipe `response.body` through as SSE. Never throws for HTTP errors —
- * the caller inspects `response.ok` and falls back to the mock on failure.
+ * the caller inspects `response.ok` and reports a failure as one (no mock reply).
  */
 export async function openAgentChatStream(
   id: string,
