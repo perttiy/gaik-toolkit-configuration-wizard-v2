@@ -36,18 +36,40 @@ function MessageRow({
   );
 }
 
+// Past this, a bare "thinking" cue reads as a frozen chat — a blueprint or
+// scaffolding turn really does take minutes — so say the work is still going.
+const STILL_WORKING_AFTER_MS = 20_000;
+
 // Shown in the assistant bubble while waiting for the first token — a clear
 // "the wizard is thinking" cue (the real agent can take 30–60 s on turn one).
-function TypingIndicator({ label }: { label: string }) {
+function TypingIndicator({
+  label,
+  stillWorkingLabel,
+}: {
+  label: string;
+  stillWorkingLabel: string;
+}) {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setSlow(true), STILL_WORKING_AFTER_MS);
+    return () => clearTimeout(timer);
+  }, []);
   return (
-    <span
-      className="inline-flex items-center gap-1.5 py-0.5"
-      role="status"
-      aria-label={label}
-    >
-      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-muted [animation-delay:-0.3s]" />
-      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-muted [animation-delay:-0.15s]" />
-      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-muted" />
+    <span className="inline-flex flex-col gap-1.5 py-0.5">
+      <span
+        className="inline-flex items-center gap-1.5"
+        role="status"
+        aria-label={label}
+      >
+        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-muted [animation-delay:-0.3s]" />
+        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-muted [animation-delay:-0.15s]" />
+        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-text-muted" />
+      </span>
+      {slow ? (
+        <span className="text-xs text-text-muted" data-testid="chat-still-working">
+          {stillWorkingLabel}
+        </span>
+      ) : null}
     </span>
   );
 }
@@ -70,6 +92,8 @@ export function ChatPanel({
   sendLabel,
   streamFailedLabel,
   thinkingLabel,
+  stillWorkingLabel,
+  emptyReplyLabel,
   inputValue,
   onInputChange,
   userInitial,
@@ -84,6 +108,8 @@ export function ChatPanel({
   sendLabel: string;
   streamFailedLabel: string;
   thinkingLabel: string;
+  stillWorkingLabel: string;
+  emptyReplyLabel: string;
   inputValue: string;
   onInputChange: (value: string) => void;
   userInitial: string;
@@ -149,6 +175,7 @@ export function ChatPanel({
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      let gotText = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -163,6 +190,7 @@ export function ChatPanel({
           const evt = JSON.parse(line);
           if (evt.error) throw new Error("stream error");
           if (evt.delta) {
+            gotText = true;
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === asstId ? { ...m, content: m.content + evt.delta } : m,
@@ -170,6 +198,17 @@ export function ChatPanel({
             );
           }
         }
+      }
+      // A stream that ends without a word is a failed turn, not an answer:
+      // leaving the bubble empty looks like the wizard chose to say nothing.
+      if (!gotText) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === asstId && !m.content
+              ? { ...m, content: `⚠︎ ${emptyReplyLabel}` }
+              : m,
+          ),
+        );
       }
     } catch {
       setMessages((prev) =>
@@ -224,7 +263,10 @@ export function ChatPanel({
                   m.content
                 )
               ) : streaming ? (
-                <TypingIndicator label={thinkingLabel} />
+                <TypingIndicator
+                  label={thinkingLabel}
+                  stillWorkingLabel={stillWorkingLabel}
+                />
               ) : null}
             </MessageRow>
           );

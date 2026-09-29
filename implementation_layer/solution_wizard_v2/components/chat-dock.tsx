@@ -15,6 +15,8 @@ export function ChatDock({
   sendLabel,
   streamFailedLabel,
   thinkingLabel,
+  stillWorkingLabel,
+  emptyReplyLabel,
   hideChatLabel,
   showChatLabel,
   railBadge,
@@ -31,6 +33,8 @@ export function ChatDock({
   sendLabel: string;
   streamFailedLabel: string;
   thinkingLabel: string;
+  stillWorkingLabel: string;
+  emptyReplyLabel: string;
   hideChatLabel: string;
   showChatLabel: string;
   railBadge: string;
@@ -93,6 +97,8 @@ export function ChatDock({
           sendLabel={sendLabel}
           streamFailedLabel={streamFailedLabel}
           thinkingLabel={thinkingLabel}
+          stillWorkingLabel={stillWorkingLabel}
+          emptyReplyLabel={emptyReplyLabel}
           inputValue={chatInput}
           onInputChange={setChatInput}
           userInitial={userInitial}
