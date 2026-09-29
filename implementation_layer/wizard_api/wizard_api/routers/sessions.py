@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from wizard_api.db import get_db
+from wizard_api.session_state import GateNotApprovedError
 from wizard_api.schemas.blueprint import SessionDetailResponse
 from wizard_api.schemas.session import (
     SessionCreate,
@@ -151,7 +152,17 @@ def list_poc_files(session_id: uuid.UUID, db: Session = Depends(get_db)) -> dict
         for root, _, names in os.walk(poc)
         for name in names
     )
-    return {"generated": True, "files": files}
+    # `generated` says files exist; `ready` says they add up to a package worth
+    # handing over. The UI showed a download as soon as the first was true.
+    from wizard_api.services import poc_service
+
+    problems = poc_service.package_problems(poc)
+    return {
+        "generated": True,
+        "files": files,
+        "ready": not problems,
+        "problems": problems,
+    }
 
 
 @router.get("/{session_id}/poc")
@@ -164,6 +175,21 @@ def download_poc(session_id: uuid.UUID, db: Session = Depends(get_db)) -> Respon
     poc = _poc_dir(session.output_dir)
     if not poc or not os.path.isdir(poc):
         raise HTTPException(status_code=404, detail="no PoC generated yet")
+    # An incomplete package is worse than no package: it downloads, it installs
+    # nowhere, and it runs to no effect, which reads to the user as the wizard
+    # having produced something broken rather than not having finished.
+    from wizard_api.services import poc_service
+
+    problems = poc_service.package_problems(poc)
+    if problems:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "poc_package_incomplete",
+                "problems": problems,
+                "message": "the generated package is not complete: " + "; ".join(problems),
+            },
+        )
     parent = os.path.dirname(poc)  # so archive entries keep the poc/ prefix
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -209,6 +235,20 @@ def generate_poc(
     session = session_service.get_session(db, session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="session not found")
+    # The package is scaffolded from the approved blueprint, so Gate 2 has to
+    # have been approved first. Without this the button worked at Gate 2 and
+    # reported "generating the PoC package from the approved blueprint" over a
+    # blueprint nobody had approved.
+    if session.gate_statuses.get("gate_2") != "approved":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "gate_not_approved",
+                "gate": "gate_2",
+                "status": session.gate_statuses.get("gate_2", "pending"),
+                "message": "approve Gate 2 before generating the PoC package",
+            },
+        )
     if _poc_dir(session.output_dir) is None:
         raise HTTPException(status_code=409, detail="session has no usable output_dir")
 
@@ -260,7 +300,22 @@ def update_session(
     session = session_service.get_session(db, session_id)
     if session is None:
         raise HTTPException(status_code=404, detail="session not found")
-    updated = session_service.update_session(db, session, payload)
+    try:
+        updated = session_service.update_session(db, session, payload)
+    except GateNotApprovedError as exc:
+        # 409, not 422: the request is well-formed, the session is simply not in
+        # a state where it may be granted. The caller (the UI or the agent) is
+        # expected to show the gate rather than retry.
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "gate_not_approved",
+                "gate": exc.gate_key,
+                "gate_step": exc.gate_step,
+                "status": exc.status,
+                "message": str(exc),
+            },
+        ) from exc
     return session_service.session_detail(db, updated)
 
 

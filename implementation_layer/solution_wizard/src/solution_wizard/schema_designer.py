@@ -18,19 +18,15 @@ remains the *runtime* component; these files are the design-time contract.
 from __future__ import annotations
 
 import json
-import textwrap
-from pathlib import Path
-from typing import Any, Dict, List, Optional
-
 
 # ---------------------------------------------------------------------------
 # Python type mapping from JSON-style type names
 # ---------------------------------------------------------------------------
-
 import re
+from pathlib import Path
+from typing import Any
 
-
-_TYPE_MAP: Dict[str, str] = {
+_TYPE_MAP: dict[str, str] = {
     "string": "str",
     "str": "str",
     "text": "str",
@@ -53,7 +49,64 @@ _TYPE_MAP: Dict[str, str] = {
     "object": "str",
     "dict": "str",
     "enum": "str",
+    # "Decimal" is a marker _py_type() can return like any other type name;
+    # build_pydantic_model() special-cases it below to emit the safe
+    # DecimalField/OptionalDecimalField aliases instead of bare Decimal --
+    # see _DECIMAL_HELPER_SOURCE for why a bare Decimal field is unsafe
+    # (regex-lookaround JSON schema some providers reject, and a crash when
+    # the model writes "12.40 EUR" instead of a bare number).
+    "decimal": "Decimal",
+    "money": "Decimal",
+    "currency": "Decimal",
 }
+
+# This module is deliberately gaik-independent ("All generation is
+# deterministic (no API calls)" -- see module docstring), so the Decimal
+# safety net is inlined here rather than imported from
+# gaik.software_components.extractor.schema.decimal_field_repr /
+# DECIMAL_PERSISTED_HELPER_SOURCE, which this module's own callers cannot
+# assume is installed. Keep this text in sync with schema.py's copy if that
+# logic ever changes.
+_DECIMAL_HELPER_SOURCE = r'''
+import re as _re
+from decimal import Decimal
+from typing import Annotated
+
+from pydantic import BeforeValidator, WithJsonSchema
+
+_CURRENCY_NOISE_RE = _re.compile(
+    r"(?i)\b(EUR|USD|GBP|JPY|CHF|SEK|NOK|DKK|CAD|AUD|INR)\b|[€$£¥₹]"
+)
+_SINGLE_AMOUNT_RE = _re.compile(r"^[-+]?(\d{1,3}(,\d{3})+|\d+)(\.\d+)?$")
+
+
+def _clean_decimal_string(v):
+    """Strip currency/unit noise before Decimal parsing; reject (return None)
+    ambiguous or multi-number input rather than fabricating a value. See
+    gaik.software_components.extractor.schema._clean_decimal_string for the
+    full policy this mirrors."""
+    if not isinstance(v, str):
+        return v
+    s = v.strip()
+    if not s:
+        return None
+    s = _CURRENCY_NOISE_RE.sub("", s).strip()
+    if not s:
+        return None
+    if not _SINGLE_AMOUNT_RE.match(s):
+        return None
+    return s.replace(",", "")
+
+
+DecimalField = Annotated[
+    Decimal, WithJsonSchema({"type": "string"}), BeforeValidator(_clean_decimal_string)
+]
+OptionalDecimalField = Annotated[
+    Decimal | None,
+    WithJsonSchema({"anyOf": [{"type": "string"}, {"type": "null"}]}),
+    BeforeValidator(_clean_decimal_string),
+]
+'''
 
 
 def _py_type(type_name: str) -> str:
@@ -61,21 +114,67 @@ def _py_type(type_name: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _normalize_spec(target_output_spec: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of target_output_spec with fields normalised to List[str].
+
+    For multi_source_report use cases, `fields` is a list of section dicts
+    (id, title, instructions, depends_on).  All downstream builders expect a
+    flat List[str] of field names.  This helper extracts field ids and merges
+    section instructions into field_descriptions so the full prompt text is
+    preserved.
+    """
+    raw_fields = target_output_spec.get("fields", [])
+    if not raw_fields or not isinstance(raw_fields[0], dict):
+        return target_output_spec  # already flat; nothing to do
+
+    flat_fields: list[str] = []
+    extra_descriptions: dict[str, str] = {}
+    for item in raw_fields:
+        fid = item.get("id") or item.get("title", "")
+        flat_fields.append(fid)
+        instr = item.get("instructions", "")
+        if instr:
+            extra_descriptions[fid] = instr
+
+    # Merge: existing field_descriptions take precedence; fill gaps with instructions
+    existing_descs = target_output_spec.get("field_descriptions", {})
+    if not isinstance(existing_descs, dict):
+        existing_descs = {}
+    merged_descriptions = dict(extra_descriptions)
+    merged_descriptions.update(existing_descs)
+
+    # Build a normalised copy
+    normalised = dict(target_output_spec)
+    normalised["fields"] = flat_fields
+    normalised["field_descriptions"] = merged_descriptions
+    # required_fields: if list contains dicts, flatten them too
+    raw_required = normalised.get("required_fields", [])
+    if raw_required and isinstance(raw_required[0], dict):
+        normalised["required_fields"] = [r.get("id", r.get("title", "")) for r in raw_required]
+    return normalised
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
 
-def build_requirements_text(target_output_spec: Dict[str, Any]) -> str:
+def build_requirements_text(target_output_spec: dict[str, Any]) -> str:
     """Build a plain-text user requirements string from target_output_spec.
 
     This is passed to AudioToStructuredData / DocumentsToStructuredData as
     user_requirements.  It mirrors the format used in the official examples.
     """
-    fields: List[str] = target_output_spec.get("fields", [])
-    field_types: Dict[str, str] = target_output_spec.get("field_types", {})
-    required_fields: List[str] = target_output_spec.get("required_fields", [])
-    field_descriptions: Dict[str, str] = target_output_spec.get("field_descriptions", {})
-    allowed_values: Dict[str, List[str]] = target_output_spec.get("allowed_values", {})
+    target_output_spec = _normalize_spec(target_output_spec)
+    fields: list[str] = target_output_spec.get("fields", [])
+    field_types: dict[str, str] = target_output_spec.get("field_types", {})
+    required_fields: list[str] = target_output_spec.get("required_fields", [])
+    field_descriptions: dict[str, str] = target_output_spec.get("field_descriptions", {})
+    allowed_values: dict[str, list[str]] = target_output_spec.get("allowed_values", {})
     missing_value_policy: str = target_output_spec.get(
         "missing_value_policy", 'Return an empty string ("") if the value is not present.'
     )
@@ -101,20 +200,57 @@ def build_requirements_text(target_output_spec: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def build_pydantic_model(
-    target_output_spec: Dict[str, Any], schema_name: Optional[str] = None
-) -> str:
+#: Key under which a spec describes the shape of a repeated child collection.
+#: The rest of the spec is flat — `fields` is a list of names — so a field whose
+#: value is a list of records had nowhere to say what a record contains, and
+#: `_TYPE_MAP` typed it `str` "so the PoC at least parses". That is what turned
+#: a purchase order's line items into one text field.
+NESTED_KEY = "nested"
+
+
+def _nested_specs(target_output_spec: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """The child collections this spec describes, keyed by container field name.
+
+    Only containers that are also listed in ``fields`` count: a nested block for
+    a field the output does not have is a spec error we ignore rather than
+    generate a model nobody references.
+    """
+    nested = target_output_spec.get(NESTED_KEY)
+    if not isinstance(nested, dict):
+        return {}
+    fields = target_output_spec.get("fields", [])
+    return {
+        name: spec
+        for name, spec in nested.items()
+        if name in fields and isinstance(spec, dict) and spec.get("fields")
+    }
+
+
+def _child_model_name(container: str) -> str:
+    """``line_items`` -> ``LineItem``. Singular, because the class is one row."""
+    words = [w for w in container.split("_") if w]
+    if words:
+        last = words[-1]
+        if len(last) > 3 and last.endswith("ies"):
+            words[-1] = last[:-3] + "y"          # entries -> entry
+        elif len(last) > 2 and last.endswith("s") and not last.endswith("ss"):
+            words[-1] = last[:-1]                # items -> item, but address stays
+    return "".join(w.title() for w in words) or "Item"
+
+
+def build_pydantic_model(target_output_spec: dict[str, Any], schema_name: str | None = None) -> str:
     """Generate output_schema.py content -- a typed Pydantic model.
 
     This is a documentation/reference artefact.  The runtime uses it as a
     schema hint; the GAIK module generates its own internal schema from the
     user_requirements string.
     """
-    fields: List[str] = target_output_spec.get("fields", [])
-    field_types: Dict[str, str] = target_output_spec.get("field_types", {})
-    required_fields: List[str] = target_output_spec.get("required_fields", [])
-    field_descriptions: Dict[str, str] = target_output_spec.get("field_descriptions", {})
-    allowed_values: Dict[str, Any] = target_output_spec.get("allowed_values", {})
+    target_output_spec = _normalize_spec(target_output_spec)
+    fields: list[str] = target_output_spec.get("fields", [])
+    field_types: dict[str, str] = target_output_spec.get("field_types", {})
+    required_fields: list[str] = target_output_spec.get("required_fields", [])
+    field_descriptions: dict[str, str] = target_output_spec.get("field_descriptions", {})
+    allowed_values: dict[str, Any] = target_output_spec.get("allowed_values", {})
     name = schema_name or target_output_spec.get("schema_name") or "OutputSchema"
 
     def _safe_enum_member(v: str) -> str:
@@ -131,13 +267,37 @@ def build_pydantic_model(
     # back to real types and raises "not fully defined". Eager evaluation (the
     # default without that import) is required for Pydantic v2 to build the
     # model correctly.
-    imports = ["from pydantic import BaseModel, Field"]
+    nested = _nested_specs(target_output_spec)
+
+    imports = ["from pydantic import BaseModel, ConfigDict, Field"]
     has_optional = any(f not in required_fields for f in fields)
     has_enum = any(f in allowed_values for f in fields)
+    typing_names = []
     if has_optional:
-        imports.append("from typing import Optional")
+        typing_names.append("Optional")
+    if nested:
+        typing_names.append("List")
+    if typing_names:
+        imports.append(f"from typing import {', '.join(sorted(typing_names))}")
     if has_enum:
         imports.append("from enum import Enum")
+
+    # Each child collection becomes its own named model. Azure OpenAI's
+    # structured output rejects a bare dict — it requires additionalProperties
+    # false on every object — which is why a named model with extra='forbid' is
+    # the shape that works, and why typing the field `str` was the stand-in.
+    child_blocks: list[str] = []
+    child_needs_decimal = False
+    for container, child_spec in nested.items():
+        child_source = build_pydantic_model(child_spec, _child_model_name(container))
+        # Keep only the class definitions from the child's own module source:
+        # its imports, docstring and the shared Decimal helper belong to the
+        # parent file, which emits them once for everyone.
+        if "DecimalField" in child_source:
+            child_needs_decimal = True
+        lines = child_source.splitlines()
+        start = next(i for i, ln in enumerate(lines) if ln.startswith("class "))
+        child_blocks.append("\n".join(lines[start:]).rstrip() + "\n")
 
     enum_blocks = []
     for field in fields:
@@ -148,7 +308,19 @@ def build_pydantic_model(
             enum_blocks.append(f"class {enum_name}(str, Enum):\n{members}\n")
 
     field_lines = []
+    needs_decimal_helper = False
     for field in fields:
+        if field in nested:
+            child = _child_model_name(field)
+            desc = field_descriptions.get(field, "")
+            arg = f'Field(description="{desc}")' if desc else "..."
+            if field in required_fields:
+                field_lines.append(f"    {field}: List[{child}] = {arg}")
+            else:
+                default = f'Field(default_factory=list, description="{desc}")' if desc \
+                    else "Field(default_factory=list)"
+                field_lines.append(f"    {field}: List[{child}] = {default}")
+            continue
         py_type = _py_type(field_types.get(field, "string"))
         vals = allowed_values.get(field, [])
         if vals and all(isinstance(v, str) for v in vals):
@@ -158,40 +330,72 @@ def build_pydantic_model(
         desc = field_descriptions.get(field, "")
         # Use Field(description=...) so the description propagates into JSON Schema
         field_arg = f'Field(description="{desc}")' if desc else "..."
+        is_decimal = py_type == "Decimal"
 
         if field in required_fields:
-            field_lines.append(f"    {field}: {py_type} = {field_arg}")
+            if is_decimal:
+                needs_decimal_helper = True
+                field_lines.append(f"    {field}: DecimalField = {field_arg}")
+            else:
+                field_lines.append(f"    {field}: {py_type} = {field_arg}")
+        elif is_decimal:
+            # OptionalDecimalField already includes `| None` -- wrapping it
+            # again in Optional[...] would double-wrap into
+            # Optional[Annotated[Decimal | None, ...]], which pydantic still
+            # validates correctly but which introspection-based schema
+            # writers (generate_schema.py, run_poc.py.tmpl) cannot unwrap.
+            needs_decimal_helper = True
+            default_arg = f'Field(default=None, description="{desc}")' if desc else "None"
+            field_lines.append(f"    {field}: OptionalDecimalField = {default_arg}")
         else:
             default_arg = f'Field(default=None, description="{desc}")' if desc else "None"
             field_lines.append(f"    {field}: Optional[{py_type}] = {default_arg}")
 
+    if child_needs_decimal:
+        needs_decimal_helper = True
+
     body = "\n".join(field_lines) if field_lines else "    pass"
 
     parts = [
-        '"""Generated output schema.\n\nGenerated by GAIK Solution Configuration Wizard V2.\nDo not hand-edit -- regenerate via scaffold_poc.py.\n"""',
+        (
+            '"""Generated output schema.\n\nGenerated by GAIK Solution Configuration Wizard V2.'
+            '\nDo not hand-edit -- regenerate via scaffold_poc.py.\n"""'
+        ),
         "",
         "\n".join(imports),
         "",
     ]
+    if needs_decimal_helper:
+        parts += ["", _DECIMAL_HELPER_SOURCE.strip(), ""]
     # Enum definitions must come before the model class so Pydantic can resolve them
     if enum_blocks:
         parts += [""] + enum_blocks
+    if child_blocks:
+        parts += [""] + child_blocks
     parts += [
         "",
         f"class {name}(BaseModel):",
+        # Azure's structured output requires additionalProperties:false on every
+        # object in the schema, which is what extra='forbid' emits.
+        "    model_config = ConfigDict(extra='forbid')",
+        "",
         body,
         "",
     ]
     # Pydantic v2 requires model_rebuild() when the model references
-    # types (e.g. Enums) defined in the same module / exec block.
-    if enum_blocks:
+    # types (e.g. Enums, or the Decimal safety aliases) defined in the same
+    # module / exec block -- callers that exec() this source into a bare
+    # dict namespace (see write_schema_files()'s JSON Schema export below)
+    # otherwise raise "class is not fully defined" for DecimalField /
+    # OptionalDecimalField.
+    if enum_blocks or needs_decimal_helper or child_blocks:
         parts += [f"{name}.model_rebuild()", ""]
     return "\n".join(parts)
 
 
 # Maps our field_types vocabulary to the AllowedTypes Literal expected by
 # ExtractionRequirements / FieldSpec in gaik.software_components.extractor.schema
-_ALLOWED_TYPES_MAP: Dict[str, str] = {
+_ALLOWED_TYPES_MAP: dict[str, str] = {
     "string": "str",
     "str": "str",
     "text": "str",
@@ -217,10 +421,10 @@ def _to_allowed_type(raw_type: str) -> str:
 
 
 def build_requirements_json(
-    target_output_spec: Dict[str, Any],
+    target_output_spec: dict[str, Any],
     use_case_name: str = "",
-    schema_class_name: Optional[str] = None,
-) -> Dict[str, Any]:
+    schema_class_name: str | None = None,
+) -> dict[str, Any]:
     """Generate the requirements JSON in the format expected by load_schema().
 
     save_schema() / load_schema() contract (gaik audio_to_structured_data pipeline):
@@ -246,11 +450,12 @@ def build_requirements_json(
             }
         }
     """
-    fields: List[str] = target_output_spec.get("fields", [])
-    field_types: Dict[str, str] = target_output_spec.get("field_types", {})
-    required_fields: List[str] = target_output_spec.get("required_fields", [])
-    field_descriptions: Dict[str, str] = target_output_spec.get("field_descriptions", {})
-    allowed_values: Dict[str, Any] = target_output_spec.get("allowed_values", {})
+    target_output_spec = _normalize_spec(target_output_spec)
+    fields: list[str] = target_output_spec.get("fields", [])
+    field_types: dict[str, str] = target_output_spec.get("field_types", {})
+    required_fields: list[str] = target_output_spec.get("required_fields", [])
+    field_descriptions: dict[str, str] = target_output_spec.get("field_descriptions", {})
+    allowed_values: dict[str, Any] = target_output_spec.get("allowed_values", {})
     class_name = schema_class_name or target_output_spec.get("schema_name") or "OutputSchema"
 
     field_specs = []
@@ -275,21 +480,53 @@ def build_requirements_json(
             }
         )
 
+    name = use_case_name or class_name
+    nested = _nested_specs(target_output_spec)
+    if not nested:
+        return {
+            "model_name": class_name,
+            "requirements": {"use_case_name": name, "fields": field_specs},
+        }
+
+    # CompositeExtractionRequirements: the parent record plus one entry per
+    # repeated child collection. gaik's load_schema() already recognises this
+    # shape — it switches on structure_type — so the only thing missing was the
+    # wizard writing it. The container itself is not a parent field: it is the
+    # list the children go into.
+    containers = set(nested)
+    parent_specs = [fs for fs in field_specs if fs["field_name"] not in containers]
+    children = []
+    for container, child_spec in nested.items():
+        child = build_requirements_json(child_spec, use_case_name=container)
+        children.append(
+            {
+                "container_name": container,
+                "container_description": (
+                    child_spec.get("description")
+                    or field_descriptions.get(container)
+                    or f"One entry per {container.replace('_', ' ').rstrip('s')}"
+                ),
+                "requirements": child["requirements"],
+            }
+        )
+
     return {
         "model_name": class_name,
+        "requirements_type": "parent_with_nested_list",
         "requirements": {
-            "use_case_name": use_case_name or class_name,
-            "fields": field_specs,
+            "structure_type": "parent_with_nested_list",
+            "parent_requirements": {"use_case_name": name, "fields": parent_specs},
+            "children": children,
         },
     }
 
 
 def write_schema_files(
-    target_output_spec: Dict[str, Any],
-    schema_name: Optional[str],
+    target_output_spec: dict[str, Any],
+    schema_name: str | None,
     output_dir: Path,
     use_case_name: str = "",
-) -> Dict[str, Path]:
+) -> dict[str, Path]:
     """Write all schema artefacts into output_dir/schemas/.
 
     File layout that load_schema(schema_dir, "output_schema") expects:
@@ -305,7 +542,7 @@ def write_schema_files(
     schemas_dir.mkdir(parents=True, exist_ok=True)
 
     class_name = schema_name or target_output_spec.get("schema_name") or "OutputSchema"
-    results: Dict[str, Path] = {}
+    results: dict[str, Path] = {}
 
     # output_schema.py -- class must be named class_name so load_schema can find it
     py_content = build_pydantic_model(target_output_spec, class_name)
@@ -315,7 +552,7 @@ def write_schema_files(
 
     # output_schema.json (human-readable JSON Schema; best-effort)
     try:
-        ns: Dict[str, Any] = {}
+        ns: dict[str, Any] = {}
         exec(compile(py_content, "<schema>", "exec"), ns)
         model_cls = ns.get(class_name)
         if model_cls and hasattr(model_cls, "model_json_schema"):
@@ -337,7 +574,7 @@ def write_schema_files(
     return results
 
 
-def write_extraction_requirements(target_output_spec: Dict[str, Any], output_dir: Path) -> Path:
+def write_extraction_requirements(target_output_spec: dict[str, Any], output_dir: Path) -> Path:
     """Write prompts/extraction_requirements.md -- passed as user_requirements at runtime."""
     prompts_dir = output_dir / "prompts"
     prompts_dir.mkdir(parents=True, exist_ok=True)

@@ -22,10 +22,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import time
 from collections.abc import AsyncGenerator
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 try:
     from claude_agent_sdk import (
@@ -98,6 +101,12 @@ def _agent_env() -> dict[str, str]:
     (local dev — no Foundry resource needed). Foundry vars, when set, are already
     in ``os.environ`` and pass straight through. Never raises: an unauthenticated
     CLI surfaces a clear error on the first turn instead.
+
+    What is deliberately *not* here: the API's own secrets (``WIZARD_API_TOKEN``,
+    ``WIZARD_DATABASE_URL``). ``wizard_api.config`` takes them out of
+    ``os.environ`` at import, and that is the only place it can be done — the
+    SDK merges this dict over the inherited environment rather than replacing
+    it, so dropping keys here would not keep them from the agent's Bash tool.
     """
     env = dict(os.environ)
     env.setdefault("API_TIMEOUT_MS", "600000")
@@ -146,6 +155,33 @@ def _language_line(locale: str | None) -> str:
     return (
         f"\n- Respond to the user in {lang}. Ask every question and write every "
         f"reply in {lang}, regardless of the language the user writes in."
+    )
+
+
+def _normalise_locale(locale: str | None) -> str | None:
+    """The locale as the language map knows it, or None when we do not."""
+    key = (locale or "").strip().lower()
+    return key if key in _LOCALE_LANGUAGE else None
+
+
+def relanguage_prompt(previous: str | None, incoming: str | None) -> str | None:
+    """An instruction re-pinning the reply language, or None when none is needed.
+
+    The locale reached the agent only in the bootstrap turn, so a session that
+    began in one language kept answering in it after the user switched the UI —
+    the English UI still showing Finnish field labels is that, seen from the
+    other side. A live agent cannot be re-bootstrapped without losing the
+    conversation, so the change is sent as its own short instruction instead.
+    """
+    before = _normalise_locale(previous)
+    after = _normalise_locale(incoming)
+    if after is None or after == before:
+        return None
+    lang = _LOCALE_LANGUAGE[after]
+    return (
+        f"The user switched the interface to {lang}. From now on, write every "
+        f"reply and every artifact you generate in {lang}, regardless of the "
+        f"language the user writes in. Do not comment on this instruction."
     )
 
 
@@ -262,6 +298,7 @@ async def _stream_turn(
                     yield sse({"done": True})
                 break
     except Exception as exc:  # noqa: BLE001
+        logger.exception("agent chat turn failed for session %s", session.get("id"))
         yield sse({"error": True, "message": str(exc)})
     finally:
         session["last_active"] = time.time()
@@ -297,6 +334,13 @@ async def get_or_create_session(
     SDK/CLI or the wizard assets are missing."""
     existing = AGENT_SESSIONS.get(session_id)
     if existing is not None:
+        # The session is already live, so the locale cannot be pinned by
+        # bootstrapping again — send the change as its own instruction instead.
+        repin = relanguage_prompt(existing.get("locale"), locale)
+        if repin is not None:
+            await existing["client"].query(repin)
+            await _drain_silent(existing["client"])
+            existing["locale"] = _normalise_locale(locale)
         return existing
 
     if not _SDK_AVAILABLE:
@@ -321,6 +365,9 @@ async def get_or_create_session(
         "output_dir": out,
         "lock": asyncio.Lock(),
         "last_active": time.time(),
+        # What the bootstrap pinned, so a later turn can tell a switch from a
+        # repeat and only re-instruct on a real change.
+        "locale": _normalise_locale(locale),
     }
     AGENT_SESSIONS[session_id] = session
     return session
