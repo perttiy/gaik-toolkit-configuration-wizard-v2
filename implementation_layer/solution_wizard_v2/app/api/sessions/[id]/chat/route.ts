@@ -55,8 +55,10 @@ export const POST = withLogging("chat.post", async (
 
   // When the wizard_api agent chat endpoint (#29 backend) is live, proxy the
   // message to it and stream the reply straight through. wizard_api persists the
-  // exchange. Any upstream failure falls through to the mock below, so the UI
-  // never breaks while that endpoint is still being built.
+  // exchange. A failure is reported as a failure: substituting the canned mock
+  // reply would show the user an answer the assistant never wrote (T3/R2), and
+  // would log a healthy 200. The chat panel turns a non-ok response into its
+  // "failed to stream" message, so the user can simply send again.
   if (wizardAgentChatEnabled()) {
     try {
       const upstream = await openAgentChatStream(id, userMessage, locale);
@@ -65,14 +67,15 @@ export const POST = withLogging("chat.post", async (
       }
       logger.warn(
         { traceId: getTraceId(), sessionId: id, status: upstream.status },
-        "chat.post agent upstream returned non-ok; falling back to mock reply",
+        "chat.post agent upstream returned non-ok",
       );
     } catch (err) {
       logger.error(
         { traceId: getTraceId(), err, sessionId: id },
-        "chat.post agent upstream threw; falling back to mock reply",
+        "chat.post agent upstream threw",
       );
     }
+    return new Response("Agent unavailable", { status: 502 });
   }
 
   const fullReply = await resolveChatReply(id, owned.session, userMessage, t);
