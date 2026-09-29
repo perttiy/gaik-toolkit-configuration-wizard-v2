@@ -203,6 +203,7 @@ export type Dict = {
   chatThinking: string;
   chatStillWorking: string;
   chatEmptyReply: string;
+  chatCutOff: string;
   chatBusy: string;
 
   phases: string[];
@@ -419,6 +420,8 @@ const fi: Dict = {
   chatStillWorking:
     "Työ on vielä käynnissä. Pitkä vaihe voi kestää muutaman minuutin — älä lähetä viestiä uudelleen.",
   chatEmptyReply: "Agentti ei antanut vastausta. Lähetä viestisi uudelleen.",
+  chatCutOff:
+    "Yhteys katkesi kesken vastauksen, joten se voi olla vajaa. Lataa sivu ja tarkista.",
   chatBusy:
     "Wizard vastaa vielä edelliseen viestiin — hetki, ja lähetä uudelleen.",
 
@@ -653,6 +656,8 @@ const en: Dict = {
   chatStillWorking:
     "Still working. A long step can take a few minutes — please don't send the message again.",
   chatEmptyReply: "The agent gave no answer. Please send your message again.",
+  chatCutOff:
+    "The connection dropped mid-answer, so it may be incomplete. Reload the page and check.",
   chatBusy:
     "The wizard is still finishing the previous reply — please wait a moment and resend.",
 

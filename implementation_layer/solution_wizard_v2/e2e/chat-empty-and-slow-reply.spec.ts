@@ -65,3 +65,30 @@ test.describe("Chat panel — empty and slow replies", () => {
     await expect(hint).toHaveCount(0);
   });
 });
+
+test.describe("Chat panel — connection lost mid-reply", () => {
+  test.beforeEach(async ({ request }) => {
+    await resetMockSessions(request);
+  });
+
+  test("a reply cut off after some text is marked as possibly incomplete", async ({ page }) => {
+    // The stream carries text, then an error frame — what the client sees when
+    // the connection drops part-way through a long agent turn.
+    await page.route("**/api/sessions/*/chat", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body: 'data: {"delta":"Kirjaan tämän ja"}\n\ndata: {"error":true}\n\n',
+      }),
+    );
+    await loginAsDev(page);
+    await page.goto("/sessions/ses_ui_basics");
+
+    await page.getByRole("textbox").fill("Hei");
+    await page.getByRole("button", { name: "Lähetä" }).click();
+
+    const log = page.getByRole("log");
+    await expect(log.getByText("Kirjaan tämän ja")).toBeVisible();
+    await expect(log.getByText(/Yhteys katkesi kesken vastauksen/)).toBeVisible();
+  });
+});

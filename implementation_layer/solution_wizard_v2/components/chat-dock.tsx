@@ -17,6 +17,7 @@ export function ChatDock({
   thinkingLabel,
   stillWorkingLabel,
   emptyReplyLabel,
+  cutOffLabel,
   hideChatLabel,
   showChatLabel,
   railBadge,
@@ -35,6 +36,7 @@ export function ChatDock({
   thinkingLabel: string;
   stillWorkingLabel: string;
   emptyReplyLabel: string;
+  cutOffLabel: string;
   hideChatLabel: string;
   showChatLabel: string;
   railBadge: string;
@@ -99,6 +101,7 @@ export function ChatDock({
           thinkingLabel={thinkingLabel}
           stillWorkingLabel={stillWorkingLabel}
           emptyReplyLabel={emptyReplyLabel}
+          cutOffLabel={cutOffLabel}
           inputValue={chatInput}
           onInputChange={setChatInput}
           userInitial={userInitial}

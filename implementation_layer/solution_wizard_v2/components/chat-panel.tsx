@@ -94,6 +94,7 @@ export function ChatPanel({
   thinkingLabel,
   stillWorkingLabel,
   emptyReplyLabel,
+  cutOffLabel,
   inputValue,
   onInputChange,
   userInitial,
@@ -110,6 +111,7 @@ export function ChatPanel({
   thinkingLabel: string;
   stillWorkingLabel: string;
   emptyReplyLabel: string;
+  cutOffLabel: string;
   inputValue: string;
   onInputChange: (value: string) => void;
   userInitial: string;
@@ -211,12 +213,15 @@ export function ChatPanel({
         );
       }
     } catch {
+      // Nothing arrived: the whole turn failed. Some text arrived: the reply was
+      // cut off, and left unmarked it reads as if the wizard stopped mid-sentence.
       setMessages((prev) =>
-        prev.map((m) =>
-          m.id === asstId && !m.content
-            ? { ...m, content: `⚠︎ ${streamFailedLabel}` }
-            : m,
-        ),
+        prev.map((m) => {
+          if (m.id !== asstId) return m;
+          return m.content
+            ? { ...m, content: `${m.content}\n\n⚠︎ ${cutOffLabel}` }
+            : { ...m, content: `⚠︎ ${streamFailedLabel}` };
+        }),
       );
     } finally {
       setStreaming(false);
