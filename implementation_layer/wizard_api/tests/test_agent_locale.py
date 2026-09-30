@@ -36,6 +36,12 @@ def test_an_unknown_or_missing_locale_pins_nothing():
     assert _language_line("it") == ""
 
 
+def test_the_bootstrap_prompt_keeps_code_and_internal_names_out_of_the_chat(tmp_path):
+    prompt = _bootstrap_prompt(tmp_path, "fi")
+    assert "never show code blocks" in prompt
+    assert "Mermaid" in prompt and "raw JSON" in prompt
+
+
 def test_the_bootstrap_prompt_carries_the_pin(tmp_path):
     assert "in Finnish" in _bootstrap_prompt(tmp_path, "fi")
     assert "in English" in _bootstrap_prompt(tmp_path, "en")
