@@ -88,6 +88,12 @@ spec:
             # Secret from a Job it creates (#91 follow-up).
             - name: WIZARD_INSTANCE_NAME
               value: NAME_PLACEHOLDER
+            # The image a sandbox run executes the PoC in. Set here so it is not
+            # hand state on the Deployment, and per instance so an s4 run does not
+            # use staging's runner (and staging's gaik version). Built and pushed
+            # by `deploy.sh poc-runner`.
+            - name: WIZARD_POC_RUNNER_IMAGE
+              value: image-registry.apps.2.rahti.csc.fi/PROJECT_PLACEHOLDER/NAME_PLACEHOLDER-poc-runner:latest
           volumeMounts:
             - name: session-output
               mountPath: /data/sessions
