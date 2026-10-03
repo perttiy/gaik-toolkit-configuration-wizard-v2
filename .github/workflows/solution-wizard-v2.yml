@@ -2,14 +2,14 @@ name: Solution Wizard V2
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main, dev, sync-v1, sprint4]
     paths:
       - "implementation_layer/solution_wizard_v2/**"
       - "implementation_layer/wizard_api/**"
       - "implementation_layer/solution_wizard/**"
       - ".github/workflows/solution-wizard-v2.yml"
   pull_request:
-    branches: [main, dev]
+    branches: [main, dev, sync-v1, sprint4]
     paths:
       - "implementation_layer/solution_wizard_v2/**"
       - "implementation_layer/wizard_api/**"
