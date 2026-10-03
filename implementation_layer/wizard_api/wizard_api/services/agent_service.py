@@ -179,6 +179,20 @@ def relanguage_prompt(previous: str | None, incoming: str | None) -> str | None:
     )
 
 
+# The chat is read by business users, not developers. Files the agent writes keep
+# their technical content; only what it says in the conversation is plain.
+_PLAIN_CHAT_RULE = (
+    "- The people in this chat are business users. In your messages never show "
+    "code blocks, Mermaid or other diagram code, raw JSON, Python types or "
+    "class/module names (for example CamelCase component names), file paths or "
+    "field identifiers such as accounts_payable. Describe components and steps "
+    "by what they do, in plain words. Diagrams and the blueprint are shown to "
+    "the user in the workspace next to the chat, so say that they are there "
+    "instead of pasting them. This applies to your chat messages only; write "
+    "the generated files as the instructions require."
+)
+
+
 def _bootstrap_prompt(output_dir: Path, locale: str | None = None) -> str:
     """Internal first message: invoke the skill and pin the output directory."""
     return f"""\
@@ -201,7 +215,8 @@ IMPORTANT INSTRUCTIONS FOR THIS WEB SESSION:
 - The user's FIRST message will be their use-case description (Step 1.2 of
   Phase 1). Acknowledge it briefly (1-2 sentences: pattern classification +
   what you understood), then move straight into Phase 2 requirement collection.
-- Ask one or two questions per message and wait for the reply. Use Markdown.{_language_line(locale)}
+- Ask one or two questions per message and wait for the reply. Use Markdown.
+{_PLAIN_CHAT_RULE}{_language_line(locale)}
 """
 
 
