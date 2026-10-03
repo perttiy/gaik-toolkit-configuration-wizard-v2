@@ -251,3 +251,52 @@ describe("service token on outgoing calls (#132)", () => {
     expect(TOKEN_HEADER in headersOfCall(0)).toBe(false);
   });
 });
+
+
+// --- User header (#134) -------------------------------------------------------
+
+describe("user header on outgoing calls (#134)", () => {
+  const USER_HEADER = "X-Wizard-User-Id";
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.resetModules();
+    fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ sessions: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    process.env.WIZARD_API_URL = "http://api.test";
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.doUnmock("@/lib/current-user");
+    delete process.env.WIZARD_API_URL;
+  });
+
+  it("names the signed-in user so wizard_api can refuse another user's session", async () => {
+    vi.doMock("@/lib/current-user", () => ({
+      getCurrentUser: vi.fn(async () => ({ email: "alice@example.com" })),
+    }));
+    const { apiListSessions } = await import("@/lib/wizard-api-client");
+    await apiListSessions("alice@example.com");
+    const headers = (fetchMock.mock.calls[0] as [string, RequestInit & { headers: Record<string, string> }])[1]
+      .headers;
+    expect(headers[USER_HEADER]).toBe("alice@example.com");
+  });
+
+  it("sends no user header where there is no signed-in user", async () => {
+    vi.doMock("@/lib/current-user", () => ({
+      getCurrentUser: vi.fn(async () => null),
+    }));
+    const { apiListSessions } = await import("@/lib/wizard-api-client");
+    await apiListSessions("alice@example.com");
+    const headers = (fetchMock.mock.calls[0] as [string, RequestInit & { headers: Record<string, string> }])[1]
+      .headers;
+    expect(headers[USER_HEADER]).toBeUndefined();
+  });
+});
