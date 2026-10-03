@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
-import { DEV_AUTH, DEV_COOKIE, isDevUserEmail } from "@/lib/auth";
+import { DEV_AUTH, DEV_COOKIE } from "@/lib/auth";
+import { verifyDevSession } from "@/lib/dev-session";
 import { TRACE_HEADER } from "@/lib/trace-header";
 
 // Edge runtime (middleware) can't use node:async_hooks, so traceId
@@ -23,10 +24,10 @@ function nextWithTraceId(request: NextRequest): NextResponse {
 }
 
 export async function middleware(request: NextRequest) {
-  // Dev mode: simple cookie check, no Supabase.
+  // Dev mode: signed cookie check (lib/dev-session), no Supabase.
   if (DEV_AUTH) {
-    const email = request.cookies.get(DEV_COOKIE)?.value;
-    const hasSession = Boolean(email && isDevUserEmail(email));
+    const email = await verifyDevSession(request.cookies.get(DEV_COOKIE)?.value);
+    const hasSession = email !== null;
     const path = request.nextUrl.pathname;
     const isPublic =
       path.startsWith("/login") || path.startsWith("/api/dev/");
