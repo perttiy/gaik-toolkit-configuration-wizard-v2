@@ -12,6 +12,7 @@ import {
   apiPostVersion,
   type ApiSessionDetail,
   type ApiSessionSummary,
+  WizardApiError,
   wizardApiEnabled,
 } from "@/lib/wizard-api-client";
 import {
@@ -145,6 +146,17 @@ function summaryToWizardSession(summary: ApiSessionSummary): WizardSession {
   };
 }
 
+/**
+ * The one upstream failure a session lookup may answer with "nothing here":
+ * the API said 404. Anything else — the API down, a 5xx, the service token
+ * refused — is rethrown, so the route answers 502 (with-logging) instead of
+ * telling the user their session does not exist.
+ */
+function undefinedIfNotFound(err: unknown): undefined {
+  if (err instanceof WizardApiError && err.status === 404) return undefined;
+  throw err;
+}
+
 export async function listSessions(userId: string): Promise<WizardSession[]> {
   if (!wizardApiEnabled()) {
     return mock.listSessions(userId);
@@ -160,8 +172,8 @@ export async function getSession(id: string): Promise<WizardSession | undefined>
   try {
     const detail = await apiGetSession(id);
     return detailToWizardSession(detail);
-  } catch {
-    return undefined;
+  } catch (err) {
+    return undefinedIfNotFound(err);
   }
 }
 
@@ -187,8 +199,8 @@ export async function postMessage(
   try {
     const detail = await apiPostMessages(id, userContent, assistantContent);
     return detailToWizardSession(detail);
-  } catch {
-    return undefined;
+  } catch (err) {
+    return undefinedIfNotFound(err);
   }
 }
 
@@ -331,7 +343,7 @@ export async function patchSessionBlueprint(
   try {
     const detail = await apiPatchBlueprint(id, blueprint, note);
     return detailToWizardSession(detail);
-  } catch {
-    return undefined;
+  } catch (err) {
+    return undefinedIfNotFound(err);
   }
 }

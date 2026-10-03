@@ -106,6 +106,24 @@ export async function openAgentChatStream(
   });
 }
 
+/**
+ * A wizard_api response that was not 2xx. `status` lets callers tell the one
+ * case they may swallow (404: the thing is not there) from the ones they must
+ * not (the API is down, misconfigured, or refusing): a 502 to the browser says
+ * "try again", a 404 says "this never existed" — and lib/sessions used to turn
+ * every failure into the second (review B3).
+ */
+export class WizardApiError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly path: string,
+    body: string,
+  ) {
+    super(`wizard_api ${status} ${path}: ${body}`);
+    this.name = "WizardApiError";
+  }
+}
+
 async function wizardFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const base = getWizardApiUrl() ?? DEFAULT_API_URL;
   const res = await fetch(`${base}${path}`, {
@@ -119,7 +137,7 @@ async function wizardFetch<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`wizard_api ${res.status} ${path}: ${text}`);
+    throw new WizardApiError(res.status, path, text);
   }
   return res.json() as Promise<T>;
 }

@@ -13,6 +13,7 @@ vi.mock("@/lib/logger", () => ({ logger: loggerMock }));
 // request-context is left un-mocked on purpose — the whole point of this
 // wrapper is that it actually establishes a real AsyncLocalStorage context.
 import { getContext } from "@/lib/request-context";
+import { WizardApiError } from "@/lib/wizard-api-client";
 import { withLogging } from "@/lib/with-logging";
 
 function fakeRequest(overrides: { traceId?: string } = {}) {
@@ -92,6 +93,19 @@ describe("withLogging", () => {
     expect(await res.text()).not.toContain("unexpected");
     expect(childLog.error).toHaveBeenCalledWith(
       expect.objectContaining({ err: expect.any(Error) }),
+      "request.error",
+    );
+  });
+
+  it("answers 502, not 500, when the handler failed because wizard_api did (B3)", async () => {
+    const handler = withLogging("x", async (_req: NextRequest): Promise<Response> => {
+      throw new WizardApiError(503, "/sessions/s1", "service unavailable");
+    });
+    const res = await handler(fakeRequest());
+    expect(res.status).toBe(502);
+    expect(await res.text()).toBe("Wizard API unavailable (upstream 503)");
+    expect(childLog.error).toHaveBeenCalledWith(
+      expect.objectContaining({ err: expect.any(WizardApiError) }),
       "request.error",
     );
   });

@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { logger } from "@/lib/logger";
 import { TRACE_HEADER, getContext, newTraceId, runWithContext } from "@/lib/request-context";
+import { WizardApiError } from "@/lib/wizard-api-client";
 
 type AnyHandler = (...args: never[]) => Promise<Response>;
 
@@ -39,6 +40,15 @@ export function withLogging<H extends AnyHandler>(event: string, handler: H): H 
         const durationMs = Date.now() - start;
         const userId = getContext()?.userId;
         log.error({ err, durationMs, userId }, "request.error");
+        // The backend failed, not this app: say so with a 502 so the UI can
+        // show "try again" instead of "not found" or "internal error". The
+        // upstream body stays in the log; the caller gets the status only.
+        if (err instanceof WizardApiError) {
+          return new Response(`Wizard API unavailable (upstream ${err.status})`, {
+            status: 502,
+            headers: { [TRACE_HEADER]: traceId },
+          });
+        }
         return new Response("Internal error", {
           status: 500,
           headers: { [TRACE_HEADER]: traceId },
