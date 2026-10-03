@@ -32,6 +32,23 @@ TEMPLATES_DIR = Path(__file__).parent.parent.parent / "templates" / "poc"
 # provider_config.py and the stage-config constructor arguments need gaik 0.8.0.
 _MIN_GAIK_VERSION = "0.8.0"
 
+# The report writer modules first shipped in gaik 0.8.2; 0.8.0/0.8.1 have neither
+# the modules nor their extras, so a ``>=0.8.0`` floor lets pip resolve to a release
+# that installs cleanly and then fails at ``import`` when the PoC starts.
+_MIN_GAIK_VERSION_BY_EXTRA = {
+    "report-writer": "0.8.2",
+    "source-normalizer": "0.8.2",
+    "knowledge-curator": "0.8.2",
+    "report-synthesizer": "0.8.2",
+    "draft-reviewer": "0.8.2",
+}
+
+
+def _gaik_requirement(line: str) -> str:
+    """Attach the lowest gaik release that actually ships what this line asks for."""
+    extra = line[len("gaik[") : line.index("]")]
+    return f"{line}>={_MIN_GAIK_VERSION_BY_EXTRA.get(extra, _MIN_GAIK_VERSION)}"
+
 _PROVIDERS = {
     "azure",
     "openai",
@@ -871,7 +888,7 @@ def _write_requirements_txt(blueprint: Blueprint, poc_dir: Path) -> None:
         requirement = f"gaik[{extra}]"
         if extra and requirement not in lines:
             lines.append(requirement)
-    lines = [f"{line}>={_MIN_GAIK_VERSION}" if line.startswith("gaik[") else line for line in lines]
+    lines = [_gaik_requirement(line) if line.startswith("gaik[") else line for line in lines]
     if not any(line.startswith("gaik[") for line in lines):
         lines.append(f"gaik>={_MIN_GAIK_VERSION}")
     lines.append("pyyaml")
