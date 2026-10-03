@@ -28,8 +28,11 @@ RUN apt-get update \
 # asks for `gaik[extract]` and friends unversioned, so without a pin here two
 # runs a week apart could use different toolkits — and the wizard's component
 # registry is synced against one specific version (see AGENTS.md, gaik-sync).
-# Bump this together with that sync, never on its own.
-ARG GAIK_VERSION=0.8.1
+# Bump this together with that sync, never on its own. 0.8.2 is the first release
+# that ships gaik.software_modules.report_writer (and its extras): the wizard
+# selects ReportWriter by default for multi-source report cases (UC04), so a
+# runner older than this fails those PoCs on import.
+ARG GAIK_VERSION=0.8.2
 
 # Only the extras the customer's five use cases actually import. `gaik[all-cpu]`
 # was the obvious choice and the wrong one: it pulls classifier/RAG/Finnish-NLP
@@ -46,7 +49,7 @@ ARG GAIK_VERSION=0.8.1
 # workflow) fails on import. That is the intended trade: the acceptance
 # criterion is those five use cases, and adding an extra here is a one-line
 # change plus a rebuild. The smoke test below is what makes such a miss legible.
-ARG GAIK_EXTRAS="extract,transcriber,enhance-transcript,audio-to-structured-data,llm-judge,vision-extract,documents-to-structured-data-cpu,evaluators"
+ARG GAIK_EXTRAS="extract,transcriber,enhance-transcript,audio-to-structured-data,llm-judge,vision-extract,documents-to-structured-data-cpu,evaluators,report-writer"
 
 # pyyaml is the scaffolded run_poc.py's own import (`import yaml`) and is not a
 # gaik dependency; pydantic and python-dotenv arrive with gaik core.
@@ -61,6 +64,7 @@ import importlib
 for module in (
     "gaik.software_modules.audio_to_structured_data",
     "gaik.software_modules.documents_to_structured_data",
+    "gaik.software_modules.report_writer",
     "gaik.software_components.extractor",
     "gaik.software_components.transcriber",
     "gaik.software_components.validators",
