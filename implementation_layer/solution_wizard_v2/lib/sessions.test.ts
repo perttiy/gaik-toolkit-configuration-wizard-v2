@@ -49,7 +49,9 @@ const apiFns = vi.hoisted(() => ({
 
 const wizardApiState = vi.hoisted(() => ({ enabled: false }));
 
-vi.mock("@/lib/wizard-api-client", () => ({
+vi.mock("@/lib/wizard-api-client", async () => ({
+  WizardApiError: (await vi.importActual<typeof import("@/lib/wizard-api-client")>("@/lib/wizard-api-client"))
+    .WizardApiError,
   apiCreateSession: apiFns.apiCreateSession,
   apiGetSession: apiFns.apiGetSession,
   apiListSessions: apiFns.apiListSessions,
@@ -60,6 +62,7 @@ vi.mock("@/lib/wizard-api-client", () => ({
   wizardApiEnabled: () => wizardApiState.enabled,
 }));
 
+import { WizardApiError } from "@/lib/wizard-api-client";
 import {
   advanceSession,
   approveGate,
@@ -138,6 +141,9 @@ describe("sessions.ts — mock mode (WIZARD_API_URL unset)", () => {
 describe("sessions.ts — wizard_api mode (WIZARD_API_URL set)", () => {
   beforeEach(() => {
     wizardApiState.enabled = true;
+    // A posted message answers with the session detail, as the API does. The
+    // old catch-all hid an undefined here; now a non-404 failure is rethrown.
+    apiFns.apiPostMessages.mockResolvedValue(apiDetail());
   });
 
   it("listSessions maps API summaries to WizardSession shape", async () => {
@@ -161,15 +167,22 @@ describe("sessions.ts — wizard_api mode (WIZARD_API_URL set)", () => {
     expect(result[0].status).toBe("active");
   });
 
-  it("getSession maps a full API detail and returns undefined on error", async () => {
+  it("getSession maps a full API detail and returns undefined only for a 404", async () => {
     apiFns.apiGetSession.mockResolvedValueOnce(apiDetail());
     const found = await getSession("s1");
     expect(found?.id).toBe("s1");
     expect(found?.gateStatus[4]).toBe("pending"); // step=4 is Gate 1, no gate_statuses.gate_1 set
 
-    apiFns.apiGetSession.mockRejectedValueOnce(new Error("404"));
+    apiFns.apiGetSession.mockRejectedValueOnce(new WizardApiError(404, "/sessions/missing", ""));
     const missing = await getSession("missing");
     expect(missing).toBeUndefined();
+  });
+
+  it("getSession does not turn an API outage into 'not found' (B3)", async () => {
+    apiFns.apiGetSession.mockRejectedValueOnce(new WizardApiError(503, "/sessions/s1", "down"));
+    await expect(getSession("s1")).rejects.toBeInstanceOf(WizardApiError);
+    apiFns.apiGetSession.mockRejectedValueOnce(new TypeError("fetch failed"));
+    await expect(getSession("s1")).rejects.toThrow("fetch failed");
   });
 
   it("createSession posts to the API and maps the result", async () => {
@@ -179,10 +192,11 @@ describe("sessions.ts — wizard_api mode (WIZARD_API_URL set)", () => {
     expect(session.title).toBe("Demo");
   });
 
-  it("postMessage posts and returns undefined on failure instead of throwing", async () => {
-    apiFns.apiPostMessages.mockRejectedValueOnce(new Error("boom"));
-    const result = await postMessage("s1", "hi", "hello");
-    expect(result).toBeUndefined();
+  it("postMessage returns undefined for a 404 and rethrows any other failure", async () => {
+    apiFns.apiPostMessages.mockRejectedValueOnce(new WizardApiError(404, "/sessions/s1/messages", ""));
+    expect(await postMessage("s1", "hi", "hello")).toBeUndefined();
+    apiFns.apiPostMessages.mockRejectedValueOnce(new WizardApiError(500, "/sessions/s1/messages", "boom"));
+    await expect(postMessage("s1", "hi", "hello")).rejects.toBeInstanceOf(WizardApiError);
   });
 
   it("advanceSession patches the step and adds a version when the transition advances", async () => {
@@ -291,8 +305,10 @@ describe("sessions.ts — wizard_api mode (WIZARD_API_URL set)", () => {
     expect(apiFns.apiPatchBlueprint).toHaveBeenCalledWith("s1", blueprint, "note");
     expect(saved?.id).toBe("s1");
 
-    apiFns.apiPatchBlueprint.mockRejectedValueOnce(new Error("boom"));
+    apiFns.apiPatchBlueprint.mockRejectedValueOnce(new WizardApiError(404, "/sessions/s1/blueprint", ""));
     const failed = await saveBlueprintAfterBpmnSync("s1", blueprint);
     expect(failed).toBeUndefined();
+    apiFns.apiPatchBlueprint.mockRejectedValueOnce(new WizardApiError(502, "/sessions/s1/blueprint", ""));
+    await expect(saveBlueprintAfterBpmnSync("s1", blueprint)).rejects.toBeInstanceOf(WizardApiError);
   });
 });
