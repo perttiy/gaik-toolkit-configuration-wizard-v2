@@ -22,7 +22,10 @@ COPY deploy/openshift/sandbox-job.yaml /manifests/sandbox-job.yaml
 COPY solution_wizard /solution_wizard
 RUN pip install --no-cache-dir -e /solution_wizard
 
-RUN pip install --no-cache-dir -e .
+# [sandbox] brings the Kubernetes client the SandboxRunner needs to create and
+# follow Jobs. Without it the image starts fine and every sandbox run then fails
+# with "the kubernetes client is not installed".
+RUN pip install --no-cache-dir -e ".[sandbox]"
 
 ARG APP_VERSION=dev
 ENV APP_VERSION=$APP_VERSION
