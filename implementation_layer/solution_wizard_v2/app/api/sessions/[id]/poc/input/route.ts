@@ -13,9 +13,10 @@ import { wizardApiEnabled, apiListPocInputs, apiUploadPocInput } from "@/lib/wiz
 
 export const dynamic = "force-dynamic";
 
-/** wizard_api refuses larger files (poc_service.MAX_INPUT_BYTES); checked here
- *  too so a 60 MB upload is not read into memory only to be refused. */
-export const MAX_INPUT_BYTES = 50 * 1024 * 1024;
+// wizard_api refuses larger files (poc_service.MAX_INPUT_BYTES); checked here
+// too so a 60 MB upload is not read into memory only to be refused. Not
+// exported: a route module may export only its handlers and config.
+const MAX_INPUT_BYTES = 50 * 1024 * 1024;
 
 export const GET = withLogging(
   "poc.input.list",
