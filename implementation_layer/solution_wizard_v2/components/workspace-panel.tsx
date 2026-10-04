@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useId, useRef, useState } from "react";
 import type { Blueprint, BlueprintStepType } from "@/lib/mock-sessions";
 import { nextTabForStepChange } from "@/lib/workspace-tab-follow";
+import { NO_POC_PACKAGE, pocPackageState } from "@/lib/poc-package-state";
 import type { Dict } from "@/lib/i18n";
 import { shouldShowBpmnSpike } from "@/lib/bpmn-spike";
 import { BlueprintJsonEditor } from "@/components/blueprint-json-editor";
@@ -224,12 +225,15 @@ export function WorkspacePanel({
   sessionTitle,
   wizardStep,
   blueprint: initialBlueprint,
+  hasSuccessfulRun = false,
   t,
 }: {
   sessionId: string;
   sessionTitle: string;
   wizardStep: number;
   blueprint: Blueprint;
+  /** wizard_api has recorded a successful sandbox run (#143); opens the deployable download. */
+  hasSuccessfulRun?: boolean;
   t: Dict;
 }) {
   const [tab, setTab] = useState<Tab>("flow");
@@ -241,9 +245,24 @@ export function WorkspacePanel({
   const [pocGenerated, setPocGenerated] = useState(false);
   const [runPhase, setRunPhase] = useState<RunPhase>("idle");
   const [runMessage, setRunMessage] = useState<string | null>(null);
+  // True once the Job exists: an error after that is "following the run was
+  // interrupted", not "the run could not be started".
+  const [runStarted, setRunStarted] = useState(false);
   const [runLogs, setRunLogs] = useState<string[]>([]);
   const logEndRef = useRef<HTMLDivElement | null>(null);
   const [pocFiles, setPocFiles] = useState<string[]>([]);
+  // `ready`/`problems` come from the api's package check; see lib/poc-package-state.
+  const [pocReady, setPocReady] = useState(false);
+  const [pocProblems, setPocProblems] = useState<string[]>([]);
+  // Sample input files in the package (#95), and whether a run has been
+  // recorded as successful (#143) — the api gates the deployable package on
+  // that, so the download is offered only then. Starts from the server's
+  // knowledge and flips when a run in this view ends in "succeeded".
+  const [pocInputs, setPocInputs] = useState<{ name: string; bytes: number }[]>([]);
+  const [inputBusy, setInputBusy] = useState(false);
+  const [inputError, setInputError] = useState<string | null>(null);
+  const [runRecorded, setRunRecorded] = useState(hasSuccessfulRun);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const baseId = useId();
 
   // Chat runs its own turns (router.refresh() after each message) and can carry the
@@ -265,15 +284,20 @@ export function WorkspacePanel({
     if (tab !== "poc") return;
     let cancelled = false;
     fetch(`/api/sessions/${sessionId}/poc/files`, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : { generated: false, files: [] }))
-      .then((d: { generated?: boolean; files?: string[] }) => {
+      .then((r) => (r.ok ? r.json() : NO_POC_PACKAGE))
+      .then((d: unknown) => {
         if (cancelled) return;
-        setPocGenerated(Boolean(d.generated));
-        setPocFiles(Array.isArray(d.files) ? d.files : []);
+        const state = pocPackageState(d);
+        setPocGenerated(state.generated);
+        setPocReady(state.ready);
+        setPocProblems(state.problems);
+        setPocFiles(state.files);
       })
       .catch(() => {
         if (!cancelled) {
           setPocGenerated(false);
+          setPocReady(false);
+          setPocProblems([]);
           setPocFiles([]);
         }
       });
@@ -281,6 +305,25 @@ export function WorkspacePanel({
       cancelled = true;
     };
   }, [tab, sessionId, pocStatus]);
+
+  // The package's sample input, listed with the files: a document PoC run from
+  // here stopped at "No PDF files found in sample_input" until someone put a
+  // file there out of band (#239).
+  useEffect(() => {
+    if (tab !== "poc" || !pocGenerated) return;
+    let cancelled = false;
+    fetch(`/api/sessions/${sessionId}/poc/input`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : { files: [] }))
+      .then((d: { files?: { name: string; bytes: number }[] }) => {
+        if (!cancelled) setPocInputs(Array.isArray(d.files) ? d.files : []);
+      })
+      .catch(() => {
+        if (!cancelled) setPocInputs([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, sessionId, pocStatus, pocGenerated]);
 
   const tabLabels: Record<Tab, string> = {
     flow: t.wsTabFlow,
@@ -304,6 +347,7 @@ export function WorkspacePanel({
   async function runInSandbox() {
     setRunPhase("pending");
     setRunMessage(null);
+    setRunStarted(false);
     setRunLogs([]);
 
     let runId: string;
@@ -316,6 +360,7 @@ export function WorkspacePanel({
         return;
       }
       runId = body.run_id;
+      setRunStarted(true);
     } catch {
       setRunPhase("error");
       setRunMessage(t.pocRunError);
@@ -353,12 +398,63 @@ export function WorkspacePanel({
           if (evt.done) {
             setRunPhase((evt.phase as RunPhase) ?? "failed");
             if (evt.message) setRunMessage(evt.message);
+            // The api records the run on this same frame; the deployable
+            // download may open without a reload.
+            if (evt.phase === "succeeded") setRunRecorded(true);
           }
         }
       }
     } catch {
       setRunPhase("error");
       setRunMessage(t.pocRunError);
+    }
+  }
+
+  async function uploadInput(file: File) {
+    setInputBusy(true);
+    setInputError(null);
+    try {
+      const form = new FormData();
+      form.append("file", file, file.name);
+      const res = await fetch(`/api/sessions/${sessionId}/poc/input`, {
+        method: "POST",
+        body: form,
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const detail = body?.detail;
+        setInputError(typeof detail === "string" ? detail : detail?.message ?? t.pocInputFailed);
+        return;
+      }
+      setPocInputs((prev) => [
+        ...prev.filter((f) => f.name !== body.name),
+        { name: body.name as string, bytes: body.bytes as number },
+      ]);
+    } catch {
+      setInputError(t.pocInputFailed);
+    } finally {
+      setInputBusy(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  async function removeInput(name: string) {
+    setInputBusy(true);
+    setInputError(null);
+    try {
+      const res = await fetch(
+        `/api/sessions/${sessionId}/poc/input/${encodeURIComponent(name)}`,
+        { method: "DELETE" },
+      );
+      if (res.status === 204 || res.status === 404) {
+        setPocInputs((prev) => prev.filter((f) => f.name !== name));
+      } else {
+        setInputError(t.pocInputFailed);
+      }
+    } catch {
+      setInputError(t.pocInputFailed);
+    } finally {
+      setInputBusy(false);
     }
   }
 
@@ -373,7 +469,7 @@ export function WorkspacePanel({
     succeeded: t.pocPhaseSucceeded,
     failed: t.pocPhaseFailed,
     timeout: t.pocPhaseTimeout,
-    error: t.pocRunError,
+    error: runStarted ? t.pocRunInterrupted : t.pocRunError,
   };
 
   async function runPoc() {
@@ -480,21 +576,84 @@ export function WorkspacePanel({
                   <div className="shrink-0 mb-4 rounded-lg border border-border bg-surface-muted p-3">
                     <div className="flex items-center justify-between gap-3 mb-2">
                       <span className="text-sm font-semibold text-text">
-                        {t.pocGeneratedTitle}
+                        {pocReady ? t.pocGeneratedTitle : t.pocNotReadyTitle}
                       </span>
-                      <a
-                        href={`/api/sessions/${sessionId}/poc/download`}
-                        download
-                        className="btn-brand text-sm"
-                      >
-                        {t.pocDownload}
-                      </a>
+                      {/* An incomplete package downloads and does nothing; the
+                          api says so (ready: false), so the link is withheld. */}
+                      {pocReady && (
+                        <a
+                          href={`/api/sessions/${sessionId}/poc/download`}
+                          download
+                          className="btn-brand text-sm"
+                        >
+                          {t.pocDownload}
+                        </a>
+                      )}
                     </div>
+                    {!pocReady && pocProblems.length > 0 && (
+                      <ul
+                        className="mb-2 list-disc pl-5 text-xs text-danger-text"
+                        data-testid="poc-problems"
+                      >
+                        {pocProblems.map((p) => (
+                          <li key={p}>{p}</li>
+                        ))}
+                      </ul>
+                    )}
                     <ul className="max-h-40 overflow-auto space-y-0.5 font-mono text-xs text-text-muted">
                       {pocFiles.map((f) => (
                         <li key={f}>{f}</li>
                       ))}
                     </ul>
+                    {/* Sample input (#95): what the run reads. Without a file
+                        here a document PoC fails at "No PDF files found". */}
+                    <div className="mt-3 border-t border-border pt-3" data-testid="poc-inputs">
+                      <div className="flex items-center justify-between gap-3 mb-1">
+                        <span className="text-xs font-semibold text-text">{t.pocInputsTitle}</span>
+                        <label className={inputBusy ? "btn-ghost text-xs opacity-60" : "btn-ghost text-xs cursor-pointer"}>
+                          {inputBusy ? t.pocInputUploading : t.pocInputUpload}
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            className="sr-only"
+                            disabled={inputBusy}
+                            data-testid="poc-input-file"
+                            onChange={(e) => {
+                              const f = e.target.files?.[0];
+                              if (f) void uploadInput(f);
+                            }}
+                          />
+                        </label>
+                      </div>
+                      {pocInputs.length === 0 ? (
+                        <p className="text-xs text-text-muted">{t.pocInputsEmpty}</p>
+                      ) : (
+                        <ul className="space-y-0.5 font-mono text-xs text-text-muted">
+                          {pocInputs.map((f) => (
+                            <li key={f.name} className="flex items-center justify-between gap-2">
+                              <span>
+                                sample_input/{f.name}{" "}
+                                <span className="text-text-faint">({Math.max(1, Math.round(f.bytes / 1024))} kB)</span>
+                              </span>
+                              <button
+                                type="button"
+                                className="btn-ghost text-xs"
+                                disabled={inputBusy}
+                                onClick={() => void removeInput(f.name)}
+                                aria-label={`${t.pocInputRemove} ${f.name}`}
+                              >
+                                {t.pocInputRemove}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {inputError && (
+                        <p className="mt-1 text-xs text-danger-text" role="alert">
+                          {inputError}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <p className="shrink-0 mb-4 text-xs text-text-muted">
@@ -520,7 +679,7 @@ export function WorkspacePanel({
                   <button
                     type="button"
                     onClick={runInSandbox}
-                    disabled={!pocGenerated || runPhase === "pending" || runPhase === "running"}
+                    disabled={!pocGenerated || !pocReady || runPhase === "pending" || runPhase === "running"}
                     className="btn-secondary"
                     data-testid="poc-run-sandbox"
                   >
@@ -528,6 +687,29 @@ export function WorkspacePanel({
                       ? t.pocRunning2
                       : t.pocRunSandbox}
                   </button>
+                  {/* The hand-over (#143): wizard_api serves this zip only after a
+                      run it recorded as successful, so the link appears only then;
+                      before that a disabled button says what has to happen. */}
+                  {runRecorded && pocReady ? (
+                    <a
+                      href={`/api/sessions/${sessionId}/poc/deployable`}
+                      download
+                      className="btn-secondary"
+                      data-testid="poc-deployable"
+                    >
+                      {t.pocDeployable}
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled
+                      title={t.pocDeployableHint}
+                      className="btn-secondary"
+                      data-testid="poc-deployable"
+                    >
+                      {t.pocDeployable}
+                    </button>
+                  )}
                   {runPhase !== "idle" && (
                     <span
                       data-testid="poc-run-phase"
@@ -551,6 +733,19 @@ export function WorkspacePanel({
                     </span>
                   )}
                 </div>
+
+                {/* Why the run ended the way it did, in the api's words. The state
+                    was set for every error frame and never shown. */}
+                {runMessage &&
+                  (runPhase === "error" || runPhase === "failed" || runPhase === "timeout") && (
+                    <p
+                      className="shrink-0 mb-3 text-xs text-danger-text"
+                      role="alert"
+                      data-testid="poc-run-message"
+                    >
+                      {runMessage}
+                    </p>
+                  )}
 
                 {shownLogs.length === 0 && pocStatus === "idle" && runPhase === "idle" ? (
                   <p className="text-xs text-text-muted">{t.pocIdle}</p>

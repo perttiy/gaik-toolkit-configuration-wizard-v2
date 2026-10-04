@@ -209,8 +209,15 @@ def test_model_provider_keys_stay_project_wide(docs: list[dict], name: str) -> N
         "ANTHROPIC_FOUNDRY_API_KEY",
         "ANTHROPIC_FOUNDRY_RESOURCE",
         "ANTHROPIC_DEFAULT_SONNET_MODEL",
+        # The agent's Phase 4 schema generation calls Azure OpenAI from the
+        # api container; without these the wizard stops before any PoC.
+        "AZURE_API_KEY",
+        "AZURE_ENDPOINT",
+        "AZURE_API_VERSION",
+        "AZURE_DEPLOYMENT",
     ):
         assert secret_ref(env[var]) == "gaik-demo-api-keys", var
+        assert env[var]["valueFrom"]["secretKeyRef"].get("optional") is True, var
     assert ("Secret", "gaik-demo-api-keys") not in named(docs)
 
 
@@ -228,7 +235,9 @@ def test_the_api_runs_as_its_own_service_account_with_only_the_sandbox_rights(
     assert binding["roleRef"]["name"] == f"{name}-api-sandbox"
     role = one(docs, "Role", f"{name}-api-sandbox")
     resources = {r for rule in role["rules"] for r in rule["resources"]}
-    assert resources == {"jobs", "pods", "pods/log"}
+    # jobs/status is its own resource for RBAC: read_namespaced_job_status
+    # is Forbidden without it even when `jobs` may be read.
+    assert resources == {"jobs", "jobs/status", "pods", "pods/log"}
     assert "secrets" not in resources
 
 
@@ -254,3 +263,25 @@ def test_render_needs_no_cluster_but_still_needs_a_project() -> None:
     )
     assert result.returncode != 0
     assert "PROJECT" in result.stdout + result.stderr
+
+
+# ---------------------------------------------------------------------------
+# The toolkit version is pinned in two images and must be the same in both
+# ---------------------------------------------------------------------------
+
+IMPL_DIR = OPENSHIFT_DIR.parents[1]
+
+
+def _gaik_version_pin(dockerfile: Path) -> str:
+    match = re.search(r"^ARG GAIK_VERSION=(\S+)$", dockerfile.read_text(), re.M)
+    assert match, f"{dockerfile} has no ARG GAIK_VERSION pin"
+    return match.group(1)
+
+
+def test_the_api_and_the_runner_pin_the_same_gaik_version() -> None:
+    """The api generates the extraction schema with gaik (Phase 4) and the
+    runner executes the PoC with gaik; two versions would mean a schema the
+    run does not read the same way. Bump both with the registry sync."""
+    api = _gaik_version_pin(IMPL_DIR / "wizard_api" / "Dockerfile")
+    runner = _gaik_version_pin(IMPL_DIR / "deploy" / "poc-runner" / "Dockerfile")
+    assert api == runner, f"wizard_api pins gaik {api}, poc-runner pins {runner}"

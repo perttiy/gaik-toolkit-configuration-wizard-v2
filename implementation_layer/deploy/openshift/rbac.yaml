@@ -24,11 +24,18 @@ items:
       labels:
         app: NAME_PLACEHOLDER-api
     rules:
-      # SandboxRunner: create_namespaced_job, read_namespaced_job (status),
-      # delete after TTL as a fallback.
+      # SandboxRunner: create_namespaced_job, read_namespaced_job_status,
+      # delete after TTL as a fallback. The status call reads the
+      # `jobs/status` subresource, which is authorised separately from `jobs`:
+      # without it the run itself proceeded but every status poll was
+      # Forbidden, so the api reported the run as failed and the PoC stream
+      # died with a 503.
       - apiGroups: ["batch"]
         resources: ["jobs"]
         verbs: ["create", "get", "list", "watch", "delete"]
+      - apiGroups: ["batch"]
+        resources: ["jobs/status"]
+        verbs: ["get"]
       # Find the Job's pod and follow its log stream.
       - apiGroups: [""]
         resources: ["pods"]
