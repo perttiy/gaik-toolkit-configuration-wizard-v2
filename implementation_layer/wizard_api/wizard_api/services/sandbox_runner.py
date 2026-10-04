@@ -85,8 +85,20 @@ RUN_CONTAINER = "poc-run"
 _IMAGE_PLACEHOLDER = "PROJECT_PLACEHOLDER"
 
 
+#: Label the manifest puts on every Job (and its pod) naming the session it runs.
+SESSION_LABEL = "wizard-v2/session-id"
+
+
 class SandboxNotConfiguredError(RuntimeError):
     """Raised when the cluster client or the runner image is missing."""
+
+
+class RunNotFoundError(LookupError):
+    """The run does not exist, or belongs to another session.
+
+    One error for both, like the 404 for a session that is not the caller's:
+    a caller must not be able to tell a stranger's run from a missing one.
+    """
 
 
 def kubernetes_available() -> bool:
@@ -288,13 +300,42 @@ class SandboxRunner:
         self._batch.create_namespaced_job(namespace=self.namespace, body=manifest)
         return rid
 
-    def status(self, run_id: str) -> RunStatus:
+    def status(self, run_id: str, *, session_id: str | None = None) -> RunStatus:
+        """Where a run got to. With ``session_id``, only if that session started it."""
         self._require_config()
         self._load_clients()
-        job = self._batch.read_namespaced_job_status(
-            name=job_name(run_id), namespace=self.namespace
-        )
+        job = self._read_job(run_id)
+        if session_id is not None:
+            self._require_run_of(job, run_id, session_id)
         return status_from_job(run_id, job)
+
+    def check_run_of_session(self, run_id: str, session_id: str) -> None:
+        """Raise ``RunNotFoundError`` unless ``session_id`` started this run (B3, #143).
+
+        The Job carries the session in its ``wizard-v2/session-id`` label, set
+        from the manifest at creation. Without this check a run id is just a
+        string the caller chose: a successful run of one session could be
+        recorded as the successful run of another, which is what opens the
+        deployable download.
+        """
+        self.status(run_id, session_id=session_id)
+
+    def _read_job(self, run_id: str) -> Any:
+        try:
+            return self._batch.read_namespaced_job_status(
+                name=job_name(run_id), namespace=self.namespace
+            )
+        except Exception as exc:  # noqa: BLE001 - only the 404 is interpreted here
+            if getattr(exc, "status", None) == 404:
+                raise RunNotFoundError(run_id) from exc
+            raise
+
+    @staticmethod
+    def _require_run_of(job: Any, run_id: str, session_id: str) -> None:
+        metadata = getattr(job, "metadata", None)
+        labels = getattr(metadata, "labels", None) or {}
+        if labels.get(SESSION_LABEL) != session_id:
+            raise RunNotFoundError(run_id)
 
     def _run_pod(self, run_id: str) -> str | None:
         pods = self._core.list_namespaced_pod(

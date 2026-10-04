@@ -13,6 +13,8 @@ import pytest
 from wizard_api.services.sandbox_runner import (
     JOB_NAME_PREFIX,
     RUN_CONTAINER,
+    SESSION_LABEL,
+    RunNotFoundError,
     SandboxNotConfiguredError,
     SandboxRunner,
     job_name,
@@ -256,6 +258,62 @@ def test_the_stream_waits_for_the_pod_to_be_scheduled():
     lines = list(_runner(core=core).stream_logs("run-1", poll_seconds=0))
 
     assert lines == ["ready"]
+
+
+def _labelled_job(session_id, **status):
+    job = _job(**status)
+    job.metadata = SimpleNamespace(labels={SESSION_LABEL: session_id})
+    return job
+
+
+def test_a_run_is_reported_to_the_session_that_started_it():
+    runner = _runner(batch=FakeBatch(_labelled_job(SESSION, succeeded=1, conditions=[])))
+
+    runner.check_run_of_session("run-1", SESSION)
+    assert runner.status("run-1", session_id=SESSION).phase == "succeeded"
+
+
+def test_another_sessions_run_is_not_found_rather_than_forbidden():
+    """B3 (#143): a run id is a string the caller chose; the Job's label decides."""
+    runner = _runner(batch=FakeBatch(_labelled_job("some-other-session", succeeded=1)))
+
+    with pytest.raises(RunNotFoundError):
+        runner.check_run_of_session("run-1", SESSION)
+    with pytest.raises(RunNotFoundError):
+        runner.status("run-1", session_id=SESSION)
+
+
+def test_a_job_without_the_session_label_is_not_any_sessions_run():
+    runner = _runner(batch=FakeBatch(_job(succeeded=1)))  # no metadata at all
+
+    with pytest.raises(RunNotFoundError):
+        runner.check_run_of_session("run-1", SESSION)
+
+
+def test_a_run_whose_job_is_gone_is_not_found():
+    class Gone(FakeBatch):
+        def read_namespaced_job_status(self, name, namespace):
+            err = RuntimeError("not found")
+            err.status = 404
+            raise err
+
+    with pytest.raises(RunNotFoundError):
+        _runner(batch=Gone()).check_run_of_session("run-1", SESSION)
+
+
+def test_a_cluster_error_other_than_404_is_not_turned_into_not_found():
+    class Broken(FakeBatch):
+        def read_namespaced_job_status(self, name, namespace):
+            err = RuntimeError("boom")
+            err.status = 500
+            raise err
+
+    with pytest.raises(RuntimeError, match="boom"):
+        _runner(batch=Broken()).check_run_of_session("run-1", SESSION)
+
+
+def test_the_status_without_a_session_stays_unchecked_for_hand_runs():
+    assert _runner().status("run-1").phase == "running"
 
 
 def test_the_stream_waits_for_the_run_container_not_only_the_pod():
