@@ -83,6 +83,15 @@ The public URL is auto-assigned (`route.yaml` omits `spec.host`):
 oc get route wizard-v2-web -n "$PROJECT" -o jsonpath='{.spec.host}'
 ```
 
+## What the api may do in the cluster (rbac.yaml)
+
+`rbac.yaml` gives each instance's api its own ServiceAccount (`wizard-v2[-s4]-api`)
+and a Role limited to what the sandbox runner does: create and read Jobs, read
+pods and pod logs. No `secrets`. `deploy.sh manifests` applies it first. Before
+this the api ran as the namespace's default account, which either could not
+create Jobs at all or, where that account had been given `edit`, could read every
+Secret in the project.
+
 ## Two instances in one project
 
 Every resource name is built from `NAME_PLACEHOLDER`, which `deploy.sh`

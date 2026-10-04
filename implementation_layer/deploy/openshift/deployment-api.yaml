@@ -30,6 +30,8 @@ spec:
       labels:
         app: NAME_PLACEHOLDER-api
     spec:
+      # The ServiceAccount from rbac.yaml: Jobs, pods and pod logs, nothing else.
+      serviceAccountName: NAME_PLACEHOLDER-api
       containers:
         - name: NAME_PLACEHOLDER-api
           # Per-instance image repository: two stacks sharing one `:latest` tag

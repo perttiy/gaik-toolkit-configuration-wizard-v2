@@ -25,6 +25,7 @@ SECOND = "s4"
 
 # What deploy.sh applies (in order) plus the secrets file it applies on demand.
 MANIFESTS = [
+    "rbac.yaml",
     "postgres.yaml",
     "pvc-sessions.yaml",
     "services.yaml",
@@ -38,6 +39,9 @@ MANIFESTS = [
 # must reproduce them exactly, or an existing deployment would be duplicated
 # instead of updated.
 STAGING_RESOURCES = {
+    ("ServiceAccount", "wizard-v2-api"),
+    ("Role", "wizard-v2-api-sandbox"),
+    ("RoleBinding", "wizard-v2-api-sandbox"),
     ("PersistentVolumeClaim", "wizard-v2-db-data"),
     ("Deployment", "wizard-v2-db"),
     ("Service", "wizard-v2-db"),
@@ -208,6 +212,24 @@ def test_model_provider_keys_stay_project_wide(docs: list[dict], name: str) -> N
     ):
         assert secret_ref(env[var]) == "gaik-demo-api-keys", var
     assert ("Secret", "gaik-demo-api-keys") not in named(docs)
+
+
+def test_the_api_runs_as_its_own_service_account_with_only_the_sandbox_rights(
+    docs: list[dict], name: str
+) -> None:
+    """Jobs, pods and pod logs; no secrets. Without rbac.yaml the api ran as the
+    namespace default account and either could not create Jobs or, where that
+    account had been given `edit`, could read every Secret in the project."""
+    api = one(docs, "Deployment", f"{name}-api")["spec"]["template"]["spec"]
+    assert api["serviceAccountName"] == f"{name}-api"
+    one(docs, "ServiceAccount", f"{name}-api")
+    binding = one(docs, "RoleBinding", f"{name}-api-sandbox")
+    assert binding["subjects"] == [{"kind": "ServiceAccount", "name": f"{name}-api"}]
+    assert binding["roleRef"]["name"] == f"{name}-api-sandbox"
+    role = one(docs, "Role", f"{name}-api-sandbox")
+    resources = {r for rule in role["rules"] for r in rule["resources"]}
+    assert resources == {"jobs", "pods", "pods/log"}
+    assert "secrets" not in resources
 
 
 def test_images_are_per_instance(docs: list[dict], name: str) -> None:
