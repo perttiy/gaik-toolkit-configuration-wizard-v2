@@ -186,11 +186,28 @@ class FakeLogStream:
         yield from self._chunks
 
 
+class WaitingToStartError(Exception):
+    """What kubernetes.client.ApiException looks like while a container is created."""
+
+    status = 400
+    body = (
+        '{"kind":"Status","status":"Failure","message":"container \\"poc-run\\" in pod '
+        '\\"pod-1\\" is waiting to start: PodInitializing","reason":"BadRequest","code":400}'
+    )
+
+
+class NotFoundError(Exception):
+    status = 404
+    body = '{"kind":"Status","status":"Failure","message":"pods \\"pod-1\\" not found","code":404}'
+
+
 class FakeCore:
-    def __init__(self, chunks, pod_after=0):
+    def __init__(self, chunks, pod_after=0, log_refusals=()):
         self._chunks = chunks
         self._calls = 0
         self._pod_after = pod_after
+        self._log_refusals = list(log_refusals)
+        self.log_attempts = 0
         self.log_args: dict = {}
 
     def list_namespaced_pod(self, namespace, label_selector):
@@ -200,7 +217,10 @@ class FakeCore:
         return SimpleNamespace(items=[SimpleNamespace(metadata=SimpleNamespace(name="pod-1"))])
 
     def read_namespaced_pod_log(self, **kwargs):
+        self.log_attempts += 1
         self.log_args = kwargs
+        if self._log_refusals:
+            raise self._log_refusals.pop(0)
         return FakeLogStream(self._chunks)
 
 
@@ -237,6 +257,26 @@ def test_the_stream_waits_for_the_pod_to_be_scheduled():
     lines = list(_runner(core=core).stream_logs("run-1", poll_seconds=0))
 
     assert lines == ["ready"]
+
+
+def test_the_stream_waits_for_the_run_container_to_start():
+    """The pod exists before its run container does (init fetch, image pull).
+    The API's 400 for that window is a wait, not a failed run — the first s4
+    run was reported failed on it while the Job went on to succeed."""
+    core = FakeCore([b"started\n"], log_refusals=[WaitingToStartError(), WaitingToStartError()])
+
+    lines = list(_runner(core=core).stream_logs("run-1", poll_seconds=0))
+
+    assert lines == ["started"]
+    assert core.log_attempts == 3
+
+
+def test_any_other_refusal_of_the_log_is_raised_at_once():
+    core = FakeCore([b"never\n"], log_refusals=[NotFoundError()])
+
+    with pytest.raises(NotFoundError):
+        list(_runner(core=core).stream_logs("run-1", poll_seconds=0))
+    assert core.log_attempts == 1
 
 
 def test_deleting_a_run_removes_its_job():

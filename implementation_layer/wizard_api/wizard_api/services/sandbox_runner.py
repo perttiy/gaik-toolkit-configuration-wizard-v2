@@ -78,6 +78,26 @@ def resolve_manifest() -> Path | None:
 JOB_NAME_PREFIX = "wizard-v2-poc-run-"
 RUN_CONTAINER = "poc-run"
 
+# How long a run container may take to start once its pod exists: the init
+# container's package fetch plus, on a node that has not seen it yet, the pull
+# of the runner image. The Job's own activeDeadlineSeconds still bounds the run.
+CONTAINER_START_TIMEOUT_SECONDS = 300
+
+
+def container_not_started(exc: Exception) -> bool:
+    """True for the API's 400 while a pod's container is still being created.
+
+    kubernetes.client.ApiException carries the HTTP status in ``status`` and
+    the server's JSON in ``body``; the message says the container "is waiting
+    to start" with the reason (PodInitializing, ContainerCreating). Matched by
+    text because that is all the API gives, and kept duck-typed so the module
+    still imports without the kubernetes package.
+    """
+    if getattr(exc, "status", None) != 400:
+        return False
+    return "waiting to start" in f"{getattr(exc, 'body', '')} {exc}"
+
+
 #: The manifest ships a registry placeholder so the file is not tied to one
 #: OpenShift project. Submitting it would create a Job that dies on
 #: ImagePullBackOff, so it is refused before anything is created — the same
@@ -308,13 +328,28 @@ class SandboxRunner:
         if pod is None:
             raise SandboxNotConfiguredError(f"no pod appeared for run {run_id}")
 
-        stream = self._core.read_namespaced_pod_log(
-            name=pod,
-            namespace=self.namespace,
-            container=RUN_CONTAINER,
-            follow=True,
-            _preload_content=False,
-        )
+        # The pod exists before its run container does: the init container
+        # fetches the package first, and the runner image may still be pulling.
+        # Asking for the run container's log in that window is a 400 from the
+        # API ("container ... is waiting to start: PodInitializing"). The first
+        # real run on s4 turned that into "the run failed" while the Job went
+        # on to succeed, so the wait for the container is part of the stream,
+        # like the wait for the pod. Anything else the API refuses is raised.
+        start_deadline = time.monotonic() + CONTAINER_START_TIMEOUT_SECONDS
+        while True:
+            try:
+                stream = self._core.read_namespaced_pod_log(
+                    name=pod,
+                    namespace=self.namespace,
+                    container=RUN_CONTAINER,
+                    follow=True,
+                    _preload_content=False,
+                )
+                break
+            except Exception as exc:  # noqa: BLE001 - kubernetes.client.ApiException, an optional import
+                if not container_not_started(exc) or time.monotonic() >= start_deadline:
+                    raise
+                time.sleep(poll_seconds)
         for chunk in stream.stream():
             text = chunk.decode("utf-8", errors="replace") if isinstance(chunk, bytes) else chunk
             yield from text.splitlines()
