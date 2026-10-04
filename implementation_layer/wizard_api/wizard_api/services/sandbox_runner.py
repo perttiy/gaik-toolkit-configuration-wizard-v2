@@ -76,6 +76,13 @@ def resolve_manifest() -> Path | None:
 
 
 JOB_NAME_PREFIX = "wizard-v2-poc-run-"
+
+#: How long the run container may take to start once its pod exists: the init
+#: container's package fetch plus, on a node that has not seen it yet, the pull
+#: of the runner image (hundreds of MB). Separate from the 120 s wait for the pod
+#: itself, which it used to share. The Job's own activeDeadlineSeconds bounds the
+#: run proper.
+CONTAINER_START_TIMEOUT_SECONDS = 300
 RUN_CONTAINER = "poc-run"
 
 #: The manifest ships a registry placeholder so the file is not tied to one
@@ -363,7 +370,9 @@ class SandboxRunner:
                 time.sleep(poll_seconds)
         if pod is None:
             raise SandboxNotConfiguredError(f"no pod appeared for run {run_id}")
-        self._wait_for_run_container(pod, run_id, poll_seconds, deadline)
+        self._wait_for_run_container(
+            pod, run_id, poll_seconds, time.monotonic() + CONTAINER_START_TIMEOUT_SECONDS
+        )
 
         stream = self._core.read_namespaced_pod_log(
             name=pod,
