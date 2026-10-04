@@ -773,6 +773,9 @@ class _RunnerOfOneSession:
             self._check(session_id)
         return RunStatus(run_id, "succeeded", exit_code=0)
 
+    def final_status(self, run_id, **_):
+        return self.status(run_id)
+
     def check_run_of_session(self, run_id, session_id):
         self._check(session_id)
 

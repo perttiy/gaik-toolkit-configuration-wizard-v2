@@ -316,6 +316,26 @@ class SandboxRunner:
             self._require_run_of(job, run_id, session_id)
         return status_from_job(run_id, job)
 
+    def final_status(
+        self, run_id: str, *, wait_seconds: float = 30.0, poll_seconds: float = 1.0
+    ) -> RunStatus:
+        """The status once the Job has settled, for the end of a log stream.
+
+        The log of a finished run ends the moment its container exits; the Job's
+        own ``status`` follows a second or two later, once the controller has
+        seen the pod finish. Reading it right at the end of the log returned
+        ``running`` for a run that had succeeded: the stream's closing frame said
+        the run was still going, and ``last_successful_run`` was never recorded,
+        so the deployable package never opened from a live run (it did when the
+        stream was attached afterwards). Wait, bounded, for a terminal phase.
+        """
+        deadline = time.monotonic() + wait_seconds
+        while True:
+            status = self.status(run_id)
+            if status.finished or time.monotonic() >= deadline:
+                return status
+            time.sleep(poll_seconds)
+
     def check_run_of_session(self, run_id: str, session_id: str) -> None:
         """Raise ``RunNotFoundError`` unless ``session_id`` started this run (B3, #143).
 
