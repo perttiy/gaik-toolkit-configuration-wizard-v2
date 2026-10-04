@@ -74,6 +74,12 @@ describe("getIncomingTraceId", () => {
     expect(headersMock.get).toHaveBeenCalledWith(TRACE_HEADER);
   });
 
+  it("generates a fresh id when the header does not look like a trace id", async () => {
+    headersMock.get.mockReturnValue("x".repeat(300));
+    const id = await getIncomingTraceId();
+    expect(id).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
   it("generates a fresh id when the header is missing", async () => {
     headersMock.get.mockReturnValue(null);
     const id = await getIncomingTraceId();

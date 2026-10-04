@@ -1,20 +1,24 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 import { DEV_AUTH, DEV_COOKIE, isDevUserEmail } from "@/lib/auth";
-import { TRACE_HEADER } from "@/lib/trace-header";
+import { TRACE_HEADER, sanitizeTraceId } from "@/lib/trace-header";
 
 // Edge runtime (middleware) can't use node:async_hooks, so traceId
 // propagation here is just a header, not the AsyncLocalStorage context that
 // route handlers get via withLogging (lib/with-logging.ts). crypto.randomUUID
-// is a Web API, safe on Edge.
+// is a Web API, safe on Edge. An incoming id is kept only if it passes
+// sanitizeTraceId; otherwise the request gets a fresh one.
+function incomingTraceId(request: NextRequest): string {
+  return sanitizeTraceId(request.headers.get(TRACE_HEADER)) ?? crypto.randomUUID();
+}
+
 function withTraceId(request: NextRequest, response: NextResponse): NextResponse {
-  const traceId = request.headers.get(TRACE_HEADER) ?? crypto.randomUUID();
-  response.headers.set(TRACE_HEADER, traceId);
+  response.headers.set(TRACE_HEADER, incomingTraceId(request));
   return response;
 }
 
 function nextWithTraceId(request: NextRequest): NextResponse {
-  const traceId = request.headers.get(TRACE_HEADER) ?? crypto.randomUUID();
+  const traceId = incomingTraceId(request);
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set(TRACE_HEADER, traceId);
   const response = NextResponse.next({ request: { headers: requestHeaders } });

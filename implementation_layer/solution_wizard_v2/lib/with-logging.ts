@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { logger } from "@/lib/logger";
 import { TRACE_HEADER, getContext, newTraceId, runWithContext } from "@/lib/request-context";
+import { sanitizeTraceId } from "@/lib/trace-header";
 
 type AnyHandler = (...args: never[]) => Promise<Response>;
 
@@ -8,7 +9,9 @@ type AnyHandler = (...args: never[]) => Promise<Response>;
  * Wrap an App Router route handler with structured start/end logging and a
  * per-request traceId (S3-10). Reads `x-trace-id` from the incoming request
  * when middleware already set one, otherwise generates a fresh one — so this
- * degrades gracefully outside middleware too (e.g. in unit tests).
+ * degrades gracefully outside middleware too (e.g. in unit tests). A header
+ * value that does not look like a trace id (see sanitizeTraceId) is replaced
+ * by a fresh one rather than echoed and logged.
  *
  * `event` is the log's operation name (e.g. "blueprint.patch"), independent
  * of the audit event names in lib/audit.ts — this is the operational log,
@@ -17,7 +20,7 @@ type AnyHandler = (...args: never[]) => Promise<Response>;
 export function withLogging<H extends AnyHandler>(event: string, handler: H): H {
   const wrapped = async (...args: Parameters<H>): Promise<Response> => {
     const req = args[0] as NextRequest | undefined;
-    const traceId = req?.headers?.get?.(TRACE_HEADER) ?? newTraceId();
+    const traceId = sanitizeTraceId(req?.headers?.get?.(TRACE_HEADER)) ?? newTraceId();
     const start = Date.now();
 
     return runWithContext({ traceId }, async () => {
