@@ -11,7 +11,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 import pytest
-
 from solution_wizard.registry import _validate_entries, get_registry
 from solution_wizard.selector import (
     CHAINS,
@@ -20,7 +19,6 @@ from solution_wizard.selector import (
     transformation_chain,
 )
 
-
 # ---------------------------------------------------------------------------
 # Registry loads and self-validates
 # ---------------------------------------------------------------------------
@@ -28,7 +26,10 @@ from solution_wizard.selector import (
 
 def test_registry_loads_and_validates():
     reg = get_registry()
-    assert len(reg.all()) == 12
+    # Floor rather than an exact count: entries are added by gaik-sync as gaik
+    # grows, and an exact assertion turns every legitimate addition into a
+    # failure. The floor still catches a truncated or half-written registry.
+    assert len(reg.all()) >= 30
 
 
 def test_registry_validation_catches_missing_keys():
@@ -175,10 +176,12 @@ def test_no_single_module_covers_a_mixed_source_case():
     mix (MultiSourceReportGenerator) writes a narrative report, so it is not a
     match for a structured record. An empty list is the signal to compose.
     """
-    # The inputs alone are covered — by the report generator — but nothing
-    # covers them *and* produces a structured record.
+    # The inputs alone are covered — by the two report writers (gaik 0.8.2
+    # added report_writer next to the legacy generator) — but nothing covers
+    # them *and* produces a structured record.
     assert {m["id"] for m in modules_covering_inputs(["audio", "pdf", "text"])} == {
-        "multi_source_report_generator"
+        "multi_source_report_generator",
+        "report_writer",
     }
     assert modules_covering_inputs(["audio", "pdf", "text"], ["structured_json"]) == []
     assert module_for_pattern("multi_source_to_structured") is None
@@ -195,12 +198,14 @@ def test_audio_only_module_is_not_offered_for_a_mixed_case():
 
 
 def test_the_mixed_reader_is_found_when_prose_output_is_wanted():
-    """MultiSourceReportGenerator does read the whole mix — it is the output
-    shape, not the inputs, that rules it out for structured records."""
+    """The report writers do read the whole mix — it is the output shape, not
+    the inputs, that rules them out for structured records. ReportWriter is
+    the default since gaik 0.8.2; the legacy generator stays selectable."""
     ids = {m["id"] for m in modules_covering_inputs(["audio", "pdf", "image"])}
-    assert ids == {"multi_source_report_generator"}
-    entry = get_registry().lookup_by_id("multi_source_report_generator")
-    assert "structured_json" not in entry["output_artifact_types"]
+    assert ids == {"multi_source_report_generator", "report_writer"}
+    for module_id in ids:
+        entry = get_registry().lookup_by_id(module_id)
+        assert "structured_json" not in entry["output_artifact_types"], module_id
 
 
 def test_input_coverage_is_case_insensitive_and_ignores_blanks():
