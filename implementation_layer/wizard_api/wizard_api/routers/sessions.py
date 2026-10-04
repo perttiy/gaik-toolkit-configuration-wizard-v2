@@ -615,7 +615,7 @@ async def stream_poc_run(
                     return
                 else:
                     break
-            status = await asyncio.to_thread(runner.status, run_id)
+            status = await asyncio.to_thread(runner.final_status, run_id)
             if status.phase == "succeeded":
                 # Recorded rather than re-queried later: a finished Job is
                 # reaped an hour after it ends (ttlSecondsAfterFinished), and

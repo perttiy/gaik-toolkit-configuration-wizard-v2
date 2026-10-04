@@ -350,6 +350,47 @@ def test_a_pod_that_failed_before_the_run_container_started_is_named():
     assert core.log_args == {}
 
 
+class _SettlingBatch(FakeBatch):
+    """A Job whose status moves on between reads, as it does right after a pod exits."""
+
+    def __init__(self, jobs):
+        super().__init__()
+        self._jobs = list(jobs)
+        self.reads = 0
+
+    def read_namespaced_job_status(self, name, namespace):
+        self.reads += 1
+        return self._jobs.pop(0) if len(self._jobs) > 1 else self._jobs[0]
+
+
+def test_the_final_status_waits_for_the_job_to_settle_after_the_log_ends():
+    """The log ends when the container exits; the Job's status follows a moment
+    later. Read at once, a succeeded run was reported as still running, and the
+    successful run was never recorded."""
+    batch = _SettlingBatch([_job(active=1), _job(active=1), _job(succeeded=1, conditions=[])])
+
+    status = _runner(batch=batch).final_status("run-1", poll_seconds=0)
+
+    assert status.phase == "succeeded"
+    assert batch.reads == 3
+
+
+def test_the_final_status_does_not_wait_for_a_run_that_is_already_finished():
+    batch = _SettlingBatch([_job(failed=1, conditions=[])])
+
+    assert _runner(batch=batch).final_status("run-1", poll_seconds=0).phase == "failed"
+    assert batch.reads == 1
+
+
+def test_the_final_status_gives_up_after_its_wait_and_reports_what_it_saw():
+    batch = _SettlingBatch([_job(active=1)])
+
+    status = _runner(batch=batch).final_status("run-1", wait_seconds=0, poll_seconds=0)
+
+    assert status.phase == "running"
+    assert batch.reads == 1
+
+
 def test_the_container_gets_its_own_longer_wait_than_the_pod():
     """An image pull on a cold node takes longer than the 120 s the pod wait
     allows; sharing that deadline reported a slow start as a failed run."""
