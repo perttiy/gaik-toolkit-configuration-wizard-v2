@@ -66,10 +66,12 @@ jobs:
         run: pip install -e . pytest pyyaml python-dotenv
       # gaik is deliberately not installed: the reference-card structural tests
       # skip without it, and checking cards against a released gaik is the
-      # gaik-sync skill's job, not this workflow's. Upstream's integration
-      # tests import gaik at module level, so they are left out here; upstream
-      # runs them with gaik installed. The fork's own gaik-dependent tests use
-      # pytest.importorskip and simply skip.
+      # gaik-sync skill's job, not this workflow's. The four --ignore'd files
+      # are UPSTREAM's (GAIK-project/gaik-toolkit; see GITFLOW.md): they import
+      # gaik at module or fixture level and upstream runs them with gaik
+      # installed. test_provider_scaffolding needs gaik too (every case errors
+      # on `import gaik` once python-dotenv is present). Do not "fix" them here.
+      # Tests of the fork's own that need gaik use pytest.importorskip and skip.
       - name: Pytest solution_wizard
         working-directory: implementation_layer/solution_wizard
         run: >-
@@ -78,7 +80,6 @@ jobs:
           --ignore=tests/test_generate_schema_cli.py
           --ignore=tests/test_pipeline_composite_loading.py
           --ignore=tests/test_provider_scaffolding.py
-          -k "not test_schema_generator_alias_reexports_the_canonical_class"
 
   solution-wizard-v2:
     runs-on: ubuntu-latest
