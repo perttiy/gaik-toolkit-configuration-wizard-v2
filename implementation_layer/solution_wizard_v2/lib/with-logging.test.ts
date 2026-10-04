@@ -43,6 +43,14 @@ describe("withLogging", () => {
     expect(res.headers.get("x-trace-id")).toMatch(/^[0-9a-f-]{36}$/);
   });
 
+  it("replaces an x-trace-id that does not look like a trace id with a fresh one", async () => {
+    const handler = withLogging("blueprint.patch", async (_req: unknown) => Response.json({ ok: true }));
+    const res = await handler(fakeRequest({ traceId: "not a trace id; injected=\"x\"" }));
+    const echoed = res.headers.get("x-trace-id");
+    expect(echoed).toMatch(/^[0-9a-f-]{36}$/);
+    expect(loggerMock.child).toHaveBeenCalledWith(expect.objectContaining({ traceId: echoed }));
+  });
+
   it("makes the handler's own context (e.g. userId) visible during the call", async () => {
     let sawUserId: string | undefined;
     const handler = withLogging("blueprint.patch", async (_req: unknown) => {

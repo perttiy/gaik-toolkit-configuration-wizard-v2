@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { headers } from "next/headers";
-import { TRACE_HEADER } from "@/lib/trace-header";
+import { TRACE_HEADER, sanitizeTraceId } from "@/lib/trace-header";
 
 export { TRACE_HEADER };
 
@@ -45,7 +45,7 @@ export function setContextUserId(userId: string): void {
 export async function getIncomingTraceId(): Promise<string> {
   try {
     const store = await headers();
-    return store.get(TRACE_HEADER) ?? newTraceId();
+    return sanitizeTraceId(store.get(TRACE_HEADER)) ?? newTraceId();
   } catch {
     // next/headers throws outside a request scope (unit tests, scripts).
     return newTraceId();

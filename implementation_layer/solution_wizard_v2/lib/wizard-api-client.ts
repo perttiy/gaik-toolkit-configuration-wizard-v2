@@ -93,7 +93,7 @@ export async function openAgentChatStream(
   locale?: string,
 ): Promise<Response> {
   const base = getWizardApiUrl() ?? DEFAULT_API_URL;
-  return fetch(`${base}/sessions/${encodeURIComponent(id)}/chat`, {
+  return fetch(`${base}${sessionPath(id, "/chat")}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -122,6 +122,15 @@ async function wizardFetch<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(`wizard_api ${res.status} ${path}: ${text}`);
   }
   return res.json() as Promise<T>;
+}
+
+/**
+ * Path of a session resource with the id percent-encoded, so an id that is
+ * not a plain token (slash, query characters, ...) cannot change which
+ * upstream endpoint the call reaches.
+ */
+function sessionPath(id: string, suffix = ""): string {
+  return `/sessions/${encodeURIComponent(id)}${suffix}`;
 }
 
 export type ApiBlueprintVersion = {
@@ -216,7 +225,7 @@ export async function apiListSessions(userId: string) {
 }
 
 export async function apiGetSession(id: string) {
-  return wizardFetch<ApiSessionDetail>(`/sessions/${id}`);
+  return wizardFetch<ApiSessionDetail>(sessionPath(id));
 }
 
 export async function apiPatchSession(
@@ -227,7 +236,7 @@ export async function apiPatchSession(
     metadata?: Record<string, unknown>;
   },
 ) {
-  return wizardFetch<ApiSessionDetail>(`/sessions/${id}`, {
+  return wizardFetch<ApiSessionDetail>(sessionPath(id), {
     method: "PATCH",
     body: JSON.stringify(body),
   });
@@ -238,7 +247,7 @@ export async function apiPostMessages(
   userContent: string,
   assistantContent: string,
 ) {
-  return wizardFetch<ApiSessionDetail>(`/sessions/${id}/messages`, {
+  return wizardFetch<ApiSessionDetail>(sessionPath(id, "/messages"), {
     method: "POST",
     body: JSON.stringify({
       user_content: userContent,
@@ -252,7 +261,7 @@ export async function apiPostVersion(
   note: string,
   content?: ApiSessionDetail["blueprint"],
 ) {
-  return wizardFetch<ApiSessionDetail>(`/sessions/${id}/versions`, {
+  return wizardFetch<ApiSessionDetail>(sessionPath(id, "/versions"), {
     method: "POST",
     body: JSON.stringify({ note, content }),
   });
@@ -263,7 +272,7 @@ export async function apiPatchBlueprint(
   content: ApiSessionDetail["blueprint"],
   note = "Blueprint päivitetty",
 ) {
-  return wizardFetch<ApiSessionDetail>(`/sessions/${id}/blueprint`, {
+  return wizardFetch<ApiSessionDetail>(sessionPath(id, "/blueprint"), {
     method: "PATCH",
     body: JSON.stringify({ content, note }),
   });
@@ -271,19 +280,20 @@ export async function apiPatchBlueprint(
 
 export async function apiGetSessionBpmn(id: string): Promise<string> {
   const base = getWizardApiUrl() ?? DEFAULT_API_URL;
-  const res = await fetch(`${base}/sessions/${id}/bpmn`, {
+  const path = sessionPath(id, "/bpmn");
+  const res = await fetch(`${base}${path}`, {
     headers: await outgoingHeaders(),
     cache: "no-store",
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`wizard_api ${res.status} /sessions/${id}/bpmn: ${text}`);
+    throw new Error(`wizard_api ${res.status} ${path}: ${text}`);
   }
   return res.text();
 }
 
 export async function apiSyncSessionBpmn(id: string, xml: string) {
-  return wizardFetch<ApiSessionDetail>(`/sessions/${id}/bpmn/sync`, {
+  return wizardFetch<ApiSessionDetail>(sessionPath(id, "/bpmn/sync"), {
     method: "POST",
     body: JSON.stringify({ xml }),
   });
@@ -293,7 +303,7 @@ export type ApiPocFiles = { generated: boolean; files: string[] };
 
 /** List the files the PoC scaffolder produced (empty until it has run). */
 export async function apiGetPocFiles(id: string): Promise<ApiPocFiles> {
-  return wizardFetch<ApiPocFiles>(`/sessions/${encodeURIComponent(id)}/poc/files`);
+  return wizardFetch<ApiPocFiles>(sessionPath(id, "/poc/files"));
 }
 
 /**
@@ -309,7 +319,7 @@ export async function apiGetPocFiles(id: string): Promise<ApiPocFiles> {
  */
 export async function apiGeneratePoc(id: string): Promise<Response> {
   const base = getWizardApiUrl() ?? DEFAULT_API_URL;
-  return fetch(`${base}/sessions/${encodeURIComponent(id)}/poc/generate`, {
+  return fetch(`${base}${sessionPath(id, "/poc/generate")}`, {
     method: "POST",
     headers: await outgoingHeaders(),
     cache: "no-store",
@@ -321,7 +331,7 @@ export async function apiGetPocZip(id: string): Promise<Response> {
   // outgoingHeaders(), not just the trace id: ServiceTokenMiddleware exempts
   // only /health and OPTIONS, so without the service token this 401s on every
   // deployment where WIZARD_API_TOKEN is set.
-  return fetch(`${base}/sessions/${encodeURIComponent(id)}/poc`, {
+  return fetch(`${base}${sessionPath(id, "/poc")}`, {
     headers: await outgoingHeaders(),
     cache: "no-store",
   });

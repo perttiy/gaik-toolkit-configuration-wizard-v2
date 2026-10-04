@@ -158,6 +158,37 @@ describe("wizardFetch-backed API helpers", () => {
     expect(JSON.parse(init.body)).toEqual({ xml: "<bpmn/>" });
   });
 
+  it("percent-encodes the session id in every session path", async () => {
+    const odd = "s1/../other?x=1#f";
+    const enc = encodeURIComponent(odd);
+    fetchMock.mockResolvedValueOnce(new Response("<bpmn/>", { status: 200 }));
+    await apiGetSessionBpmn(odd);
+    fetchMock.mockImplementation(
+      async () => new Response(JSON.stringify(detail), { status: 200 }),
+    );
+    await apiGetSession(odd);
+    await apiPatchSession(odd, { step: 2 });
+    await apiPostMessages(odd, "a", "b");
+    await apiPostVersion(odd, "n");
+    await apiPatchBlueprint(odd, detail.blueprint);
+    await apiSyncSessionBpmn(odd, "<bpmn/>");
+    const urls = fetchMock.mock.calls.map((c) => c[0] as string);
+    expect(urls).toEqual([
+      `http://api.test/sessions/${enc}/bpmn`,
+      `http://api.test/sessions/${enc}`,
+      `http://api.test/sessions/${enc}`,
+      `http://api.test/sessions/${enc}/messages`,
+      `http://api.test/sessions/${enc}/versions`,
+      `http://api.test/sessions/${enc}/blueprint`,
+      `http://api.test/sessions/${enc}/bpmn/sync`,
+    ]);
+    for (const url of urls) {
+      // The id must stay a single path segment: no new segments, query or fragment.
+      expect(url).not.toContain("/../");
+      expect(url).not.toMatch(/[?#]/);
+    }
+  });
+
   it("throws a descriptive error when the upstream response is not ok", async () => {
     fetchMock.mockResolvedValueOnce(new Response("nope", { status: 404 }));
     await expect(apiGetSession("s1")).rejects.toThrow(/wizard_api 404/);
