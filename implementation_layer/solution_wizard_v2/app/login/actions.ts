@@ -11,6 +11,7 @@ import {
   validateDevCredentials,
 } from "@/lib/auth";
 import { audit } from "@/lib/audit";
+import { DEV_SESSION_MAX_AGE_S, signDevSession, verifyDevSession } from "@/lib/dev-session";
 import { getIncomingTraceId } from "@/lib/request-context";
 
 async function devSignIn(formData: FormData) {
@@ -20,9 +21,14 @@ async function devSignIn(formData: FormData) {
 
   if (validateDevCredentials(email, password)) {
     const cookieStore = await cookies();
-    cookieStore.set(DEV_COOKIE, email, {
+    // Signed and expiring (lib/dev-session): a cookie nobody can write by hand.
+    // `secure` follows the environment: the Rahti route terminates TLS, a local
+    // `next dev` on http would otherwise never receive the cookie back.
+    cookieStore.set(DEV_COOKIE, await signDevSession(email), {
       httpOnly: true,
       sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: DEV_SESSION_MAX_AGE_S,
       path: "/",
     });
     audit("auth.login", { actor: email, outcome: "success", traceId, mode: "dev" });
@@ -84,7 +90,7 @@ export async function signOut() {
   const traceId = await getIncomingTraceId();
   if (DEV_AUTH) {
     const cookieStore = await cookies();
-    const email = cookieStore.get(DEV_COOKIE)?.value;
+    const email = await verifyDevSession(cookieStore.get(DEV_COOKIE)?.value);
     cookieStore.delete(DEV_COOKIE);
     if (email) audit("auth.logout", { actor: email, outcome: "success", traceId, mode: "dev" });
     revalidatePath("/", "layout");
