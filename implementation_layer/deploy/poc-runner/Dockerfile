@@ -49,7 +49,12 @@ ARG GAIK_VERSION=0.8.2
 # workflow) fails on import. That is the intended trade: the acceptance
 # criterion is those five use cases, and adding an extra here is a one-line
 # change plus a rebuild. The smoke test below is what makes such a miss legible.
-ARG GAIK_EXTRAS="extract,transcriber,enhance-transcript,audio-to-structured-data,llm-judge,vision-extract,documents-to-structured-data-cpu,evaluators,report-writer"
+# multimodal-parser is here because gaik.software_components.vision_extractor
+# imports the multimodal parser at module import time (markdown-it-py,
+# anthropic), and the vision-extract extra alone does not pull those in: the
+# first invoice PoC on s4 died on `No module named 'markdown_it'` before any
+# model call. The smoke test below imports vision_extractor for that reason.
+ARG GAIK_EXTRAS="extract,transcriber,enhance-transcript,audio-to-structured-data,llm-judge,vision-extract,multimodal-parser,documents-to-structured-data-cpu,evaluators,report-writer"
 
 # pyyaml is the scaffolded run_poc.py's own import (`import yaml`) and is not a
 # gaik dependency; pydantic and python-dotenv arrive with gaik core.
@@ -66,6 +71,8 @@ for module in (
     "gaik.software_modules.documents_to_structured_data",
     "gaik.software_modules.report_writer",
     "gaik.software_components.extractor",
+    "gaik.software_components.vision_extractor",
+    "gaik.software_components.parsers.multimodal_parser",
     "gaik.software_components.transcriber",
     "gaik.software_components.validators",
     "yaml",
