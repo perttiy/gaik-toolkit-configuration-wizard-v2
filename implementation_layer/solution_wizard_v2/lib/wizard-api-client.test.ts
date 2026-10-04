@@ -302,6 +302,8 @@ describe("user header on outgoing calls (#134)", () => {
     const headers = (fetchMock.mock.calls[0] as [string, RequestInit & { headers: Record<string, string> }])[1]
       .headers;
     expect(headers[USER_HEADER]).toBeUndefined();
+  });
+});
 
 describe("sample input and the deployable package (#95, #143)", () => {
   beforeEach(() => {
