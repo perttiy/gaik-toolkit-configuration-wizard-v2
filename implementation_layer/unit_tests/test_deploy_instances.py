@@ -228,7 +228,9 @@ def test_the_api_runs_as_its_own_service_account_with_only_the_sandbox_rights(
     assert binding["roleRef"]["name"] == f"{name}-api-sandbox"
     role = one(docs, "Role", f"{name}-api-sandbox")
     resources = {r for rule in role["rules"] for r in rule["resources"]}
-    assert resources == {"jobs", "pods", "pods/log"}
+    # jobs/status is its own resource for RBAC: read_namespaced_job_status
+    # is Forbidden without it even when `jobs` may be read.
+    assert resources == {"jobs", "jobs/status", "pods", "pods/log"}
     assert "secrets" not in resources
 
 
