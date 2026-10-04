@@ -1,8 +1,9 @@
 # GitFlow — Fork Development Process
 
 This document describes the branching model and commit conventions for this fork
-(`perttiy/gaik-toolkit-configuration-wizard-v2`). It keeps day-to-day development
-separate from stable, production-ready code.
+(`perttiy/gaik-toolkit-configuration-wizard-v2`): which branch runs where, how a
+change gets in, and what a commit and a PR must look like. Updated 3 Oct 2026 to
+match how the team actually works (`sync-v1` / `sprint4`, squash merges).
 
 For coding guidelines (module structure, tests, releases), see
 [`guidance_layer/CONTRIBUTING.md`](guidance_layer/CONTRIBUTING.md).
@@ -13,17 +14,19 @@ For coding guidelines (module structure, tests, releases), see
 
 | Branch | Purpose | Who merges here |
 |--------|---------|-----------------|
-| **`main`** | Stable, tested, deployable code only | Maintainer via PR from `dev` or `hotfix/*` |
-| **`dev`** | Integration branch for ongoing work | Contributors via PR from `feature/*` |
-| **`feature/*`** | New features or non-urgent changes | — (merge target: `dev`) |
-| **`hotfix/*`** | Urgent fixes to production-ready code | — (merge target: `main`, then back-merge to `dev`) |
+| **`main`** | Mirror of upstream `GAIK-project/gaik-toolkit` as last synced; the repository's default branch. Not where the fork's work lands. | Maintainer, upstream sync only |
+| **`sync-v1`** | The Rahti line: what the staging stack runs. Every change PR lands here first. | Pertti, squash merge of reviewed PRs |
+| **`sprint4`** | Integration branch of the sprint's PoC chain (sandbox, runner, PoC run). Contains `sync-v1` plus the sprint work; the `s4` Rahti instance runs it. | Pertti, by **merging `sync-v1`** into it (not cherry-picks) and squash-merging PRs that exist only for the sprint |
+| **`dev`** | Older integration branch; superseded by `sync-v1` for new work. | — |
+| **`fix/*`, `feat/*`, `ci/*`, `docs/*`, `test/*`** | One change each, branched from `sync-v1` (or from `sprint4` when the change touches files that only exist there, say in the PR why) | — (merge target: `sync-v1`) |
 
 ### Rules
 
-- **Never commit directly to `main`.** All changes reach `main` through a reviewed pull request.
-- **`dev` may be ahead of `main`.** That is expected — it is the integration branch.
-- **`main` must always build and pass CI.** Do not merge into `main` unless tests pass.
+- **Never commit directly to `sync-v1` or `sprint4`.** Every change is a reviewed pull request; ask the other developer for the review (`--reviewer`).
+- **One PR per change, base `sync-v1`.** Do not open a second "port" PR against `sprint4`; `sprint4` receives `sync-v1` by a merge, which brings everything in one step with no duplicate commits.
+- **CI must be green** on the PR before it merges (see *CI triggers*). A commit that CI never saw cannot be deployed.
 - **Delete feature branches** after they are merged.
+- **Upstream code is upstream's.** `implementation_layer/solution_wizard/` (the V1 wizard: SKILL.md, scripts, registries, the Python package) and `implementation_layer/src/gaik/` belong to the GAIK team. A change there is proposed upstream, not kept in the fork, unless agreed with Pertti first. `wizard_api/`, `solution_wizard_v2/`, `deploy/` and the workflows are the fork's own.
 
 ---
 
@@ -32,12 +35,12 @@ For coding guidelines (module structure, tests, releases), see
 ### Start a new change
 
 ```bash
-git checkout dev
-git pull origin dev
-git checkout -b feature/short-description
+git checkout sync-v1
+git pull origin sync-v1
+git checkout -b fix/short-description      # or feat/, ci/, docs/, test/
 ```
 
-Use a short, kebab-case slug that describes the change, e.g. `feature/wizard-bpmn-export`.
+Use a short, kebab-case slug that describes the change, e.g. `fix/chat-no-canned-reply`.
 
 ### Work, commit, push
 
@@ -47,16 +50,26 @@ git commit
 git push -u origin feature/short-description
 ```
 
-Open a **pull request into `dev`**. Wait for CI to pass before merging.
+Open a **pull request into `sync-v1`** and request the other developer as reviewer.
+Wait for CI to pass before merging. Pertti merges with **squash**, so the PR title
+becomes the commit subject on `sync-v1` — write it as one.
 
-### Promote stable code to `main`
+### Bring `sync-v1` into `sprint4`
 
-When `dev` is ready for release:
+When PRs have landed on `sync-v1`, merge it into `sprint4` once:
 
-1. Open a PR: `dev` → `main`
-2. Confirm CI is green
-3. Merge (prefer squash or merge commit — stay consistent within the team)
-4. Tag releases on `main` only: `git tag v0.X.Y && git push origin v0.X.Y`
+```bash
+git checkout sprint4 && git pull origin sprint4
+git merge origin/sync-v1          # a merge, not cherry-picks
+git push origin sprint4
+```
+
+### Deploy
+
+A `wizard-v2*` tag (never `v*.*.*`, that publishes the `gaik` package to PyPI)
+deploys the staging stack; a second instance is deployed with *Run workflow* and
+the `instance` input, or with `INSTANCE=<name> ./deploy.sh` by hand. The
+workflow refuses a commit whose checks are not all green.
 
 ### Hotfix (urgent production fix)
 
@@ -186,37 +199,72 @@ implementation_layer/evaluation/ to evaluation_layer/. Update imports
 before upgrading.
 ```
 
+### Issue reference
+
+Put the issue or finding the change answers in the subject when there is one:
+`fix(wizard-api): enforce the approval gates on the server (#187)`. A reviewer
+should be able to go from the commit to the reason without the PR.
+
+### Authorship and tooling
+
+The author of a commit is the person who stands behind it. Whatever editor,
+assistant or generator helped, **it is not named in the commit or the PR**:
+
+- no `Co-Authored-By:` lines for tools, no `Generated with …` footers or badges,
+  no tool or model names in messages or PR descriptions;
+- commits are made under your own name and e-mail, not a tool's identity.
+
+This is a customer deliverable, and attribution to a person is part of it.
+Review your own diff before you push, as you would for code you typed.
+
+### Before you commit
+
+Run the formatter and linter the CI runs, so a style-only follow-up commit is
+never needed:
+
+```bash
+uvx ruff@0.14.10 format implementation_layer/wizard_api implementation_layer/solution_wizard
+uvx ruff@0.14.10 check  implementation_layer/wizard_api implementation_layer/solution_wizard
+cd implementation_layer/solution_wizard_v2 && npx tsc --noEmit && npx vitest run
+```
+
 ### What to avoid
 
 - Vague messages: `fix stuff`, `update`, `wip`, `changes`
 - Mixing unrelated changes in one commit
 - Commit messages that only restate the diff without context
+- A PR description that claims something a test does not show ("runs the PoC" when the test accepts a 503)
 
 ---
 
 ## Pull request checklist
 
-Before merging into `dev`:
+Before merging into `sync-v1` (the template in `.github/PULL_REQUEST_TEMPLATE.md`
+asks for these):
 
-- [ ] Branch is up to date with `dev`
-- [ ] CI passes (tests + format check)
-- [ ] Commit messages follow the conventions above
-- [ ] PR description explains **why** and how to test
-- [ ] No secrets, credentials, or `.env` files committed
-
-Before merging into `main`:
-
-- [ ] All `dev` checklist items satisfied
-- [ ] Changes have been integrated and tested on `dev`
-- [ ] Version/tag plan is clear if this is a release
+- [ ] Base is `sync-v1` (or the PR says why it is `sprint4`)
+- [ ] CI passes (ruff, pytest, vitest, tsc, e2e)
+- [ ] Commit messages follow the conventions above; no tool attribution anywhere
+- [ ] PR description says what the problem was, what changed, what it does not do, and how it was tested
+- [ ] No secrets, credentials, `.env` files or customer material committed
+- [ ] No change under `solution_wizard/` or `src/gaik/` without agreement (see *Rules*)
 
 ---
 
 ## CI triggers
 
-GitHub Actions runs tests on:
+`solution-wizard-v2.yml` (ruff, wizard_api and solution_wizard tests, vitest,
+tsc, e2e) runs on:
 
-- Push to `main` or `dev`
-- Pull requests targeting `main` or `dev`
+- Push to `main`, `dev`, `sync-v1` or `sprint4`
+- Pull requests targeting any of those
 
-Publishing to PyPI is triggered only by version tags (`v*.*.*`) on `main`.
+`wizard-v2-acceptance.yml` runs the Docker stack specs on a push to `dev`,
+`sync-v1` or `sprint4`; its schedule runs only from the repository's default
+branch, which is still `main`.
+
+`wizard-v2-deploy.yml` deploys on a `wizard-v2*` tag or by *Run workflow*, and
+only when the commit's checks are green.
+
+Publishing to PyPI is triggered only by version tags (`v*.*.*`). Do not use that
+pattern for wizard milestones.
