@@ -11,6 +11,9 @@ on:
       - "implementation_layer/unit_tests/test_sandbox_job_manifest.py"
       - "implementation_layer/unit_tests/test_deploy_instances.py"
       - ".github/workflows/solution-wizard-v2.yml"
+      # The deploy gate reads this workflow's check runs; a change to the deploy
+      # workflow alone must still get them, or that commit cannot be deployed.
+      - ".github/workflows/wizard-v2-deploy.yml"
   pull_request:
     branches: [main, dev, sync-v1, sprint4]
     paths:
@@ -21,6 +24,9 @@ on:
       - "implementation_layer/unit_tests/test_sandbox_job_manifest.py"
       - "implementation_layer/unit_tests/test_deploy_instances.py"
       - ".github/workflows/solution-wizard-v2.yml"
+      # The deploy gate reads this workflow's check runs; a change to the deploy
+      # workflow alone must still get them, or that commit cannot be deployed.
+      - ".github/workflows/wizard-v2-deploy.yml"
   workflow_dispatch:
 
 jobs:
