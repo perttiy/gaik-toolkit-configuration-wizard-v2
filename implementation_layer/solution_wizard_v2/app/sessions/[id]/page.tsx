@@ -227,6 +227,8 @@ export default async function SessionPage({
           sendLabel={t.chatSend}
           streamFailedLabel={t.streamFailed}
           thinkingLabel={t.chatThinking}
+          stillWorkingLabel={t.chatStillWorking}
+          emptyReplyLabel={t.chatEmptyReply}
           wide={isGathering}
           hideChatLabel={t.hideChat}
           showChatLabel={t.showChat}
