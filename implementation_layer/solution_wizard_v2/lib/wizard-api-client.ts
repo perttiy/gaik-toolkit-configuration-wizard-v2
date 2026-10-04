@@ -289,7 +289,14 @@ export async function apiSyncSessionBpmn(id: string, xml: string) {
   });
 }
 
-export type ApiPocFiles = { generated: boolean; files: string[] };
+export type ApiPocFiles = {
+  generated: boolean;
+  files: string[];
+  /** Whether the files add up to a package worth handing over (wizard_api's package check). */
+  ready?: boolean;
+  /** What is missing when `ready` is false. */
+  problems?: string[];
+};
 
 /** List the files the PoC scaffolder produced (empty until it has run). */
 export async function apiGetPocFiles(id: string): Promise<ApiPocFiles> {

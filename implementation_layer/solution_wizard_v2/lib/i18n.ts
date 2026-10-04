@@ -148,6 +148,7 @@ export type Dict = {
   pocLogNoBackend: string;
   pocIdle: string;
   pocGeneratedTitle: string;
+  pocNotReadyTitle: string;
   pocDownload: string;
   pocNotGenerated: string;
   pocSuccess: string;
@@ -358,6 +359,7 @@ const fi: Dict = {
   pocLogNoBackend: "PoC-pakettia ei voi generoida: wizard_api ei ole käytettävissä.",
   pocIdle: "PoC:tä ei ole vielä ajettu. Aja se nähdäksesi lokit ja tuloksen.",
   pocGeneratedTitle: "Generoitu PoC-paketti",
+  pocNotReadyTitle: "PoC-paketti ei ole valmis — puuttuu:",
   pocDownload: "Lataa PoC",
   pocNotGenerated:
     "PoC-pakettia ei ole vielä generoitu. Se syntyy kun wizard etenee Gate 3:een asti.",
@@ -599,6 +601,7 @@ const en: Dict = {
   pocLogNoBackend: "The PoC package cannot be generated: wizard_api is unavailable.",
   pocIdle: "PoC has not been run yet. Run it to see logs and the result.",
   pocGeneratedTitle: "Generated PoC package",
+  pocNotReadyTitle: "The PoC package is not ready — missing:",
   pocDownload: "Download PoC",
   pocNotGenerated:
     "The PoC package has not been generated yet. It appears once the wizard reaches Gate 3.",
