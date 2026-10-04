@@ -169,7 +169,6 @@ export type Dict = {
   pocInputUploading: string;
   pocInputRemove: string;
   pocInputFailed: string;
-  pocInputNoPackage: string;
   pocDeployable: string;
   pocDeployableHint: string;
   gateNotice: string;
@@ -391,7 +390,6 @@ const fi: Dict = {
   pocInputUploading: "Lisätään…",
   pocInputRemove: "Poista",
   pocInputFailed: "Tiedoston lisäys epäonnistui",
-  pocInputNoPackage: "Generoi PoC-paketti ensin, sitten voit lisätä syötteen.",
   pocDeployable: "Lataa toimitettava paketti",
   pocDeployableHint: "Avautuu, kun sandbox-ajo on onnistunut: paketti ilman syöteaineistoa ja ajon tuloksia.",
   gateNotice:
@@ -642,7 +640,6 @@ const en: Dict = {
   pocInputUploading: "Adding…",
   pocInputRemove: "Remove",
   pocInputFailed: "The file could not be added",
-  pocInputNoPackage: "Generate the PoC package first, then add input.",
   pocDeployable: "Download deployable package",
   pocDeployableHint: "Opens once a sandbox run has succeeded: the package without sample input and run output.",
   gateNotice: "This is a gate step. Approve to continue to the next step.",
