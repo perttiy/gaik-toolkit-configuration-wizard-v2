@@ -137,6 +137,89 @@ From CI (`.github/workflows/wizard-v2-deploy.yml`): a tag push deploys the
 staging stack; a second instance is deployed by *Run workflow* from the branch
 to deploy, with the `instance` input set.
 
+## Building on the cluster (binary builds)
+
+`deploy.sh` builds on your machine and pushes to the registry, which needs Docker
+with `buildx` and a connection that can push images. The s4 stack has also been
+deployed another way: **the image is built on the cluster** by a BuildConfig, and
+only the source is uploaded from the machine. `oc get bc` shows `wizard-v2-s4-api`,
+`wizard-v2-s4-web` and `wizard-v2-s4-poc-runner` (source type *Binary*); each
+build runs in its own `…-build` pod and its log starts with
+`Receiving source from STDIN as archive`. The output goes to the imagestream tag
+`wizard-v2-s4-<part>:latest`, and the Deployments pull `:latest` with
+`imagePullPolicy: Always`, so a new image is used when the pods restart.
+
+> **Status of this section.** The checking commands below were run on 4 Oct 2026.
+> The `oc start-build` lines are reconstructed from the BuildConfigs and from
+> `deploy.sh` (build contexts, build args) and have **not** been confirmed against
+> the commands used for the existing s4 builds. Whoever deploys this way next:
+> confirm or correct them here.
+
+Work from a clean checkout of the branch to deploy, **outside** your working tree
+and without `node_modules`, so that what is uploaded is what is in git and `oc`
+records the commit in the build (a build started from a git directory shows
+`spec.revision.git`; the existing api and web builds show none, so what they
+contained can only be inferred):
+
+```bash
+git fetch origin
+git worktree add ../wizardv2-deploy origin/sprint4 && cd ../wizardv2-deploy
+```
+
+Nobody else may be building the same instance (`oc get builds | grep s4`); builds
+of one BuildConfig queue, and two people restarting the Deployments confuse the
+result.
+
+| Part | Upload directory | Build args | After the build |
+|---|---|---|---|
+| api | `implementation_layer` (the BuildConfig's Dockerfile is `wizard_api/Dockerfile`, which also copies `solution_wizard/`; the last stage, `production`, is the default) | `APP_VERSION` | `oc rollout restart deploy/wizard-v2-s4-api` |
+| web | `implementation_layer/solution_wizard_v2` (the Dockerfile is at its root) | `NEXT_PUBLIC_APP_VERSION`; the BuildConfig already has `NEXT_PUBLIC_DEV_AUTH=true` and empty Supabase values | `oc rollout restart deploy/wizard-v2-s4-web` |
+| poc-runner | `implementation_layer/deploy/poc-runner` | none | nothing: the Job names the image per run |
+
+```bash
+oc start-build wizard-v2-s4-api --from-dir=implementation_layer \
+  --build-arg=APP_VERSION="$(git describe --tags --always)" --follow
+oc rollout restart deploy/wizard-v2-s4-api
+oc rollout status deploy/wizard-v2-s4-api --timeout=300s
+```
+
+The version build arg is stored in the BuildConfig and goes stale (it showed an
+older commit than the one built); always pass it. Typical durations on 4 Oct: api
+~3 min, web ~10 min, runner ~3 min.
+
+Every command above names `s4`. This project is shared with about twenty other
+applications and with the staging stack (`wizard-v2-*`, no `-s4`): a build or a
+restart without the instance in its name is a deploy of someone else's.
+
+### Checking what is deployed
+
+Read-only; these were run on 4 Oct 2026.
+
+```bash
+oc get builds | grep s4                     # which builds ran, and when
+oc get pods | grep s4                       # pod ages: a pod older than its build is on the old image
+```
+
+A pod runs the newest image when its image id equals the imagestream tag:
+
+```bash
+oc get pod -l app=wizard-v2-s4-api -o jsonpath='{.items[0].status.containerStatuses[0].imageID}'
+oc get istag wizard-v2-s4-api:latest -o jsonpath='{.image.metadata.name}'
+```
+
+What an image contains is shown by looking for something only a given change has,
+for example (api, sandbox Job manifest and runner code):
+
+```bash
+oc exec deploy/wizard-v2-s4-api -- grep -c "POC OUTPUT BEGIN" /manifests/sandbox-job.yaml
+oc exec deploy/wizard-v2-s4-api -- grep -c "def final_status" /app/wizard_api/services/sandbox_runner.py
+```
+
+and for the web image, whether a route or bundle string exists (`.next/server/app/api/...`,
+`grep -rl <data-testid> .next/static`). The api's `GET /health` and the web login
+page footer show the baked-in `APP_VERSION`, which is only text set by whoever
+built.
+
 ## Environment variables
 
 **wizard-v2-api** (runtime):
