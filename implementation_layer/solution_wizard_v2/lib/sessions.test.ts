@@ -63,6 +63,7 @@ vi.mock("@/lib/wizard-api-client", () => ({
 import {
   advanceSession,
   approveGate,
+  blueprintVersionCount,
   createSession,
   getSession,
   listSessions,
@@ -294,5 +295,37 @@ describe("sessions.ts — wizard_api mode (WIZARD_API_URL set)", () => {
     apiFns.apiPatchBlueprint.mockRejectedValueOnce(new Error("boom"));
     const failed = await saveBlueprintAfterBpmnSync("s1", blueprint);
     expect(failed).toBeUndefined();
+  });
+});
+
+
+describe("blueprintVersionCount", () => {
+  it("counts from active_version when the list endpoint carried no versions (s4 finding)", () => {
+    expect(blueprintVersionCount({ versions: [], activeVersion: 7 })).toBe(7);
+  });
+
+  it("uses the versions themselves when they are present (mock store, detail view)", () => {
+    const versions = [{ version: 1 }, { version: 2 }] as never;
+    expect(blueprintVersionCount({ versions, activeVersion: 2 })).toBe(2);
+    expect(blueprintVersionCount({ versions: [], activeVersion: 0 })).toBe(0);
+  });
+
+  it("the API-mode list mapping yields a count, not zero", async () => {
+    wizardApiState.enabled = true;
+    apiFns.apiListSessions.mockResolvedValue([
+      {
+        id: "s9",
+        user_id: "u1",
+        step: 9,
+        gate_statuses: {},
+        metadata: {},
+        output_dir: "o/",
+        active_version: 4,
+        created_at: "2026-01-01T00:00:00Z",
+        updated_at: "2026-01-01T00:00:00Z",
+      },
+    ]);
+    const [s9] = await listSessions("u1");
+    expect(blueprintVersionCount(s9)).toBe(4);
   });
 });
