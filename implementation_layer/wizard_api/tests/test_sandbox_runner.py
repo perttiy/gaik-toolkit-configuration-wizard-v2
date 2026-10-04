@@ -11,6 +11,7 @@ from types import SimpleNamespace
 
 import pytest
 from wizard_api.services.sandbox_runner import (
+    CONTAINER_START_TIMEOUT_SECONDS,
     JOB_NAME_PREFIX,
     RUN_CONTAINER,
     SESSION_LABEL,
@@ -345,6 +346,23 @@ def test_a_pod_that_failed_before_the_run_container_started_is_named():
     core = FakeCore([], pods=[_pod(started=False, phase="Failed")])
 
     with pytest.raises(SandboxNotConfiguredError, match="package fetch"):
+        list(_runner(core=core).stream_logs("run-1", poll_seconds=0))
+    assert core.log_args == {}
+
+
+def test_the_container_gets_its_own_longer_wait_than_the_pod():
+    """An image pull on a cold node takes longer than the 120 s the pod wait
+    allows; sharing that deadline reported a slow start as a failed run."""
+    assert CONTAINER_START_TIMEOUT_SECONDS >= 300
+
+
+def test_a_container_that_never_starts_is_named_after_its_wait(monkeypatch):
+    import wizard_api.services.sandbox_runner as sr
+
+    monkeypatch.setattr(sr, "CONTAINER_START_TIMEOUT_SECONDS", 0)
+    core = FakeCore([b"never\n"], pods=[_pod(started=False)])
+
+    with pytest.raises(SandboxNotConfiguredError, match="did not start in time"):
         list(_runner(core=core).stream_logs("run-1", poll_seconds=0))
     assert core.log_args == {}
 
