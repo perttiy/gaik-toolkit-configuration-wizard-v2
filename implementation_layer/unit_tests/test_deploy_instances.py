@@ -179,6 +179,14 @@ def test_the_api_uses_this_instances_database_token_and_storage(docs: list[dict]
         assert secret_ref(env_of(db["containers"][0])[var]) == f"{name}-db"
 
 
+def test_the_api_runs_sandbox_jobs_in_this_instances_runner_image(docs: list[dict], name: str) -> None:
+    """Otherwise an s4 run executes in staging's runner, with staging's gaik version."""
+    api = one(docs, "Deployment", f"{name}-api")["spec"]["template"]["spec"]["containers"][0]
+    image = env_of(api)["WIZARD_POC_RUNNER_IMAGE"]["value"]
+    assert image.endswith(f"/{name}-poc-runner:latest")
+    assert "PLACEHOLDER" not in image
+
+
 def test_the_secrets_file_serves_this_instance(docs: list[dict], name: str) -> None:
     db_secret = one(docs, "Secret", f"{name}-db")
     assert f"@{name}-db:5432/" in db_secret["stringData"]["database-url"]
