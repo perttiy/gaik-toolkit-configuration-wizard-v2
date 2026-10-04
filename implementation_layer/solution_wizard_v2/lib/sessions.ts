@@ -145,6 +145,17 @@ function summaryToWizardSession(summary: ApiSessionSummary): WizardSession {
   };
 }
 
+/**
+ * How many blueprint versions a session has. The list endpoint of wizard_api
+ * does not return the versions themselves, only `active_version`, so a summary
+ * mapped from it carries `versions: []` and the card said "0 blueprint
+ * versions" for a session at step 9 (seen on the s4 stack). Versions are
+ * numbered 1..n and the active one is the latest, so its number is the count.
+ */
+export function blueprintVersionCount(session: Pick<WizardSession, "versions" | "activeVersion">): number {
+  return Math.max(session.versions.length, session.activeVersion ?? 0);
+}
+
 export async function listSessions(userId: string): Promise<WizardSession[]> {
   if (!wizardApiEnabled()) {
     return mock.listSessions(userId);

@@ -4,7 +4,7 @@ import { getI18n, DATE_LOCALE, type Dict, type Locale } from "@/lib/i18n";
 import { LocaleSwitcher } from "@/components/locale-switcher";
 import { signOut } from "./login/actions";
 import { startSession } from "./actions";
-import { listSessions, PHASE_COUNT, type WizardSession } from "@/lib/sessions";
+import { listSessions, PHASE_COUNT, type WizardSession, blueprintVersionCount } from "@/lib/sessions";
 
 function StatusBadge({ session, t }: { session: WizardSession; t: Dict }) {
   if (session.status === "done") {
@@ -120,7 +120,7 @@ export default async function Home() {
                       <span>{t.phases[s.step - 1]}</span>
                       <span className="h-1 w-1 rounded-full bg-border-strong" aria-hidden />
                       <span>
-                        {s.versions.length} {t.blueprintVersions}
+                        {blueprintVersionCount(s)} {t.blueprintVersions}
                       </span>
                       <span className="h-1 w-1 rounded-full bg-border-strong" aria-hidden />
                       <span>
