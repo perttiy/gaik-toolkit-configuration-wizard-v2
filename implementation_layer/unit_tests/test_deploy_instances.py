@@ -209,8 +209,15 @@ def test_model_provider_keys_stay_project_wide(docs: list[dict], name: str) -> N
         "ANTHROPIC_FOUNDRY_API_KEY",
         "ANTHROPIC_FOUNDRY_RESOURCE",
         "ANTHROPIC_DEFAULT_SONNET_MODEL",
+        # The agent's Phase 4 schema generation calls Azure OpenAI from the
+        # api container; without these the wizard stops before any PoC.
+        "AZURE_API_KEY",
+        "AZURE_ENDPOINT",
+        "AZURE_API_VERSION",
+        "AZURE_DEPLOYMENT",
     ):
         assert secret_ref(env[var]) == "gaik-demo-api-keys", var
+        assert env[var]["valueFrom"]["secretKeyRef"].get("optional") is True, var
     assert ("Secret", "gaik-demo-api-keys") not in named(docs)
 
 

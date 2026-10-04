@@ -151,9 +151,15 @@ to deploy, with the `instance` input set.
 | `ANTHROPIC_FOUNDRY_API_KEY` | secret `gaik-demo-api-keys` | Azure Foundry key |
 | `ANTHROPIC_FOUNDRY_RESOURCE` | secret `gaik-demo-api-keys` | `haagahelia-poc-gaik` |
 | `ANTHROPIC_DEFAULT_SONNET_MODEL` | secret `gaik-demo-api-keys` | e.g. `claude-sonnet-4-6` |
+| `AZURE_API_KEY` | secret `gaik-demo-api-keys` | Azure OpenAI key for the agent's own tool calls (Phase 4 `generate_schema.py` → GAIK SchemaGenerator) |
+| `AZURE_ENDPOINT` | secret `gaik-demo-api-keys` | `https://<resource>.openai.azure.com/` |
+| `AZURE_API_VERSION` | secret `gaik-demo-api-keys` | optional, gaik default otherwise |
+| `AZURE_DEPLOYMENT` | secret `gaik-demo-api-keys` | optional, gaik default deployment otherwise |
 
 Without the Foundry secret the pod still starts (`optional: true`), but the
-agent chat endpoint won't work.
+agent chat endpoint won't work. Without the `AZURE_*` values the chat works but
+the agent stops at Phase 4: `generate_schema.py` needs them (and the `gaik`
+package the api image installs) to generate the extraction schema.
 
 **wizard-v2-web**: `WIZARD_API_URL` (runtime, → `http://wizard-v2-api:8100`),
 `WIZARD_AGENT_CHAT=true` (live agent, not mock), `WIZARD_API_TOKEN` and
