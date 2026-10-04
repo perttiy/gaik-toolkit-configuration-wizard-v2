@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useId, useRef, useState } from "react";
 import type { Blueprint, BlueprintStepType } from "@/lib/mock-sessions";
 import { nextTabForStepChange } from "@/lib/workspace-tab-follow";
+import { NO_POC_PACKAGE, pocPackageState } from "@/lib/poc-package-state";
 import type { Dict } from "@/lib/i18n";
 import { shouldShowBpmnSpike } from "@/lib/bpmn-spike";
 import { BlueprintJsonEditor } from "@/components/blueprint-json-editor";
@@ -244,6 +245,9 @@ export function WorkspacePanel({
   const [runLogs, setRunLogs] = useState<string[]>([]);
   const logEndRef = useRef<HTMLDivElement | null>(null);
   const [pocFiles, setPocFiles] = useState<string[]>([]);
+  // `ready`/`problems` come from the api's package check; see lib/poc-package-state.
+  const [pocReady, setPocReady] = useState(false);
+  const [pocProblems, setPocProblems] = useState<string[]>([]);
   const baseId = useId();
 
   // Chat runs its own turns (router.refresh() after each message) and can carry the
@@ -265,15 +269,20 @@ export function WorkspacePanel({
     if (tab !== "poc") return;
     let cancelled = false;
     fetch(`/api/sessions/${sessionId}/poc/files`, { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : { generated: false, files: [] }))
-      .then((d: { generated?: boolean; files?: string[] }) => {
+      .then((r) => (r.ok ? r.json() : NO_POC_PACKAGE))
+      .then((d: unknown) => {
         if (cancelled) return;
-        setPocGenerated(Boolean(d.generated));
-        setPocFiles(Array.isArray(d.files) ? d.files : []);
+        const state = pocPackageState(d);
+        setPocGenerated(state.generated);
+        setPocReady(state.ready);
+        setPocProblems(state.problems);
+        setPocFiles(state.files);
       })
       .catch(() => {
         if (!cancelled) {
           setPocGenerated(false);
+          setPocReady(false);
+          setPocProblems([]);
           setPocFiles([]);
         }
       });
@@ -480,16 +489,30 @@ export function WorkspacePanel({
                   <div className="shrink-0 mb-4 rounded-lg border border-border bg-surface-muted p-3">
                     <div className="flex items-center justify-between gap-3 mb-2">
                       <span className="text-sm font-semibold text-text">
-                        {t.pocGeneratedTitle}
+                        {pocReady ? t.pocGeneratedTitle : t.pocNotReadyTitle}
                       </span>
-                      <a
-                        href={`/api/sessions/${sessionId}/poc/download`}
-                        download
-                        className="btn-brand text-sm"
-                      >
-                        {t.pocDownload}
-                      </a>
+                      {/* An incomplete package downloads and does nothing; the
+                          api says so (ready: false), so the link is withheld. */}
+                      {pocReady && (
+                        <a
+                          href={`/api/sessions/${sessionId}/poc/download`}
+                          download
+                          className="btn-brand text-sm"
+                        >
+                          {t.pocDownload}
+                        </a>
+                      )}
                     </div>
+                    {!pocReady && pocProblems.length > 0 && (
+                      <ul
+                        className="mb-2 list-disc pl-5 text-xs text-danger-text"
+                        data-testid="poc-problems"
+                      >
+                        {pocProblems.map((p) => (
+                          <li key={p}>{p}</li>
+                        ))}
+                      </ul>
+                    )}
                     <ul className="max-h-40 overflow-auto space-y-0.5 font-mono text-xs text-text-muted">
                       {pocFiles.map((f) => (
                         <li key={f}>{f}</li>
@@ -520,7 +543,7 @@ export function WorkspacePanel({
                   <button
                     type="button"
                     onClick={runInSandbox}
-                    disabled={!pocGenerated || runPhase === "pending" || runPhase === "running"}
+                    disabled={!pocGenerated || !pocReady || runPhase === "pending" || runPhase === "running"}
                     className="btn-secondary"
                     data-testid="poc-run-sandbox"
                   >

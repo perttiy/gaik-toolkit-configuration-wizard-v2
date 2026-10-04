@@ -88,17 +88,32 @@ def test_nothing_from_the_host_or_the_cluster_storage_is_mounted(pod_spec: dict)
         assert volume["emptyDir"]["sizeLimit"], volume["name"]
 
 
-def test_the_run_container_gets_no_cluster_secrets_beyond_the_model_key(
+def test_the_run_container_gets_no_cluster_secrets_beyond_the_model_settings(
     pod_spec: dict,
 ) -> None:
-    """The service token belongs to the fetch step, not to the generated code."""
+    """The service token belongs to the fetch step, not to the generated code.
+
+    The model settings are the key and where to send it: gaik's Azure config
+    refuses to start without AZURE_ENDPOINT, so the key alone failed every run.
+    """
     run = next(c for c in pod_spec["containers"] if c["name"] == "poc-run")
     secret_keys = {
         e["valueFrom"]["secretKeyRef"]["key"]
         for e in run["env"]
         if "valueFrom" in e and "secretKeyRef" in e["valueFrom"]
     }
-    assert secret_keys == {"AZURE_API_KEY"}
+    assert secret_keys == {
+        "AZURE_API_KEY",
+        "AZURE_ENDPOINT",
+        "AZURE_API_VERSION",
+        "AZURE_DEPLOYMENT",
+    }
+    # A missing key must not keep the pod from starting: the PoC then reports
+    # which setting it lacks, which is what the run log is for.
+    for e in run["env"]:
+        ref = e.get("valueFrom", {}).get("secretKeyRef")
+        if ref:
+            assert ref["name"] == "gaik-demo-api-keys" and ref["optional"] is True, e["name"]
 
 
 def test_the_run_container_starts_the_entrypoint_the_scaffolder_writes(

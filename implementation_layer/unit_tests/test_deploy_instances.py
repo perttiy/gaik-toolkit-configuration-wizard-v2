@@ -209,8 +209,15 @@ def test_model_provider_keys_stay_project_wide(docs: list[dict], name: str) -> N
         "ANTHROPIC_FOUNDRY_API_KEY",
         "ANTHROPIC_FOUNDRY_RESOURCE",
         "ANTHROPIC_DEFAULT_SONNET_MODEL",
+        # The agent's Phase 4 schema generation calls Azure OpenAI from the
+        # api container; without these the wizard stops before any PoC.
+        "AZURE_API_KEY",
+        "AZURE_ENDPOINT",
+        "AZURE_API_VERSION",
+        "AZURE_DEPLOYMENT",
     ):
         assert secret_ref(env[var]) == "gaik-demo-api-keys", var
+        assert env[var]["valueFrom"]["secretKeyRef"].get("optional") is True, var
     assert ("Secret", "gaik-demo-api-keys") not in named(docs)
 
 
@@ -228,7 +235,9 @@ def test_the_api_runs_as_its_own_service_account_with_only_the_sandbox_rights(
     assert binding["roleRef"]["name"] == f"{name}-api-sandbox"
     role = one(docs, "Role", f"{name}-api-sandbox")
     resources = {r for rule in role["rules"] for r in rule["resources"]}
-    assert resources == {"jobs", "pods", "pods/log"}
+    # jobs/status is its own resource for RBAC: read_namespaced_job_status
+    # is Forbidden without it even when `jobs` may be read.
+    assert resources == {"jobs", "jobs/status", "pods", "pods/log"}
     assert "secrets" not in resources
 
 

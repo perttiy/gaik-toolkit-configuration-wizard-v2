@@ -225,6 +225,21 @@ def status_from_job(run_id: str, job: Any) -> RunStatus:
     return RunStatus(run_id, "pending")
 
 
+def _run_container_state(pod: Any) -> str:
+    """``started`` (running or already finished), ``never`` (the pod failed
+    before the run container could start), or ``waiting``."""
+    status = getattr(pod, "status", None)
+    for container in getattr(status, "container_statuses", None) or []:
+        if getattr(container, "name", None) != RUN_CONTAINER:
+            continue
+        state = getattr(container, "state", None)
+        if getattr(state, "running", None) or getattr(state, "terminated", None):
+            return "started"
+    if getattr(status, "phase", None) == "Failed":
+        return "never"
+    return "waiting"
+
+
 class SandboxRunner:
     """Creates sandbox Jobs and follows their output.
 
@@ -348,6 +363,7 @@ class SandboxRunner:
                 time.sleep(poll_seconds)
         if pod is None:
             raise SandboxNotConfiguredError(f"no pod appeared for run {run_id}")
+        self._wait_for_run_container(pod, run_id, poll_seconds, deadline)
 
         stream = self._core.read_namespaced_pod_log(
             name=pod,
@@ -359,6 +375,33 @@ class SandboxRunner:
         for chunk in stream.stream():
             text = chunk.decode("utf-8", errors="replace") if isinstance(chunk, bytes) else chunk
             yield from text.splitlines()
+
+    def _wait_for_run_container(
+        self, pod: str, run_id: str, poll_seconds: float, deadline: float
+    ) -> None:
+        """Hold the stream until the run container exists as a process.
+
+        A pod is listed as soon as it is scheduled, but its log can be read only
+        once the init container (the package fetch) has finished and ``poc-run``
+        has started; before that the cluster answers 400 ``PodInitializing``.
+        The UI opens the stream the moment a run is created, so it always landed
+        in that window, got the error, and never reached the status check that
+        records a successful run (#143) — the Job completed, the session never
+        learned it. The wait belongs to the stream, like the wait for the pod.
+        """
+        while True:
+            state = _run_container_state(self._core.read_namespaced_pod(pod, self.namespace))
+            if state == "started":
+                return
+            if state == "never":
+                raise SandboxNotConfiguredError(
+                    f"run {run_id} did not start: its package fetch step failed"
+                )
+            if time.monotonic() >= deadline:
+                raise SandboxNotConfiguredError(
+                    f"the run container of {run_id} did not start in time"
+                )
+            time.sleep(poll_seconds)
 
     def delete_run(self, run_id: str) -> None:
         """Remove a Job early. Finished Jobs reap themselves via ttlSecondsAfterFinished."""
