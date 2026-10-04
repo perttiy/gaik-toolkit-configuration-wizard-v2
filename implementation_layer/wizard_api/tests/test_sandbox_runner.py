@@ -186,12 +186,31 @@ class FakeLogStream:
         yield from self._chunks
 
 
+def _pod(started=True, phase="Running"):
+    """A pod whose run container is (or is not yet) a process."""
+    state = SimpleNamespace(running=SimpleNamespace() if started else None, terminated=None)
+    return SimpleNamespace(
+        status=SimpleNamespace(
+            phase=phase,
+            container_statuses=[SimpleNamespace(name=RUN_CONTAINER, state=state)],
+        )
+    )
+
+
 class FakeCore:
-    def __init__(self, chunks, pod_after=0):
+    def __init__(self, chunks, pod_after=0, pods=None):
         self._chunks = chunks
         self._calls = 0
         self._pod_after = pod_after
+        self._pods = list(pods) if pods is not None else None
+        self.pod_reads = 0
         self.log_args: dict = {}
+
+    def read_namespaced_pod(self, name, namespace):
+        self.pod_reads += 1
+        if self._pods is None:
+            return _pod()
+        return self._pods.pop(0) if len(self._pods) > 1 else self._pods[0]
 
     def list_namespaced_pod(self, namespace, label_selector):
         self._calls += 1
@@ -237,6 +256,39 @@ def test_the_stream_waits_for_the_pod_to_be_scheduled():
     lines = list(_runner(core=core).stream_logs("run-1", poll_seconds=0))
 
     assert lines == ["ready"]
+
+
+def test_the_stream_waits_for_the_run_container_not_only_the_pod():
+    """The pod is listed while its init container still runs; reading the log
+    then is a 400 PodInitializing and ended the stream before the run was
+    recorded as succeeded (#143)."""
+    core = FakeCore([b"ready\n"], pods=[_pod(started=False), _pod(started=False), _pod()])
+
+    lines = list(_runner(core=core).stream_logs("run-1", poll_seconds=0))
+
+    assert lines == ["ready"]
+    assert core.pod_reads == 3
+    assert core.log_args  # the log was read only after the container started
+
+
+def test_a_run_that_already_finished_can_still_be_followed():
+    state = SimpleNamespace(running=None, terminated=SimpleNamespace(exit_code=0))
+    pod = SimpleNamespace(
+        status=SimpleNamespace(
+            phase="Succeeded", container_statuses=[SimpleNamespace(name=RUN_CONTAINER, state=state)]
+        )
+    )
+    core = FakeCore([b"done\n"], pods=[pod])
+
+    assert list(_runner(core=core).stream_logs("run-1", poll_seconds=0)) == ["done"]
+
+
+def test_a_pod_that_failed_before_the_run_container_started_is_named():
+    core = FakeCore([], pods=[_pod(started=False, phase="Failed")])
+
+    with pytest.raises(SandboxNotConfiguredError, match="package fetch"):
+        list(_runner(core=core).stream_logs("run-1", poll_seconds=0))
+    assert core.log_args == {}
 
 
 def test_deleting_a_run_removes_its_job():
