@@ -25,6 +25,7 @@ SECOND = "s4"
 
 # What deploy.sh applies (in order) plus the secrets file it applies on demand.
 MANIFESTS = [
+    "rbac.yaml",
     "postgres.yaml",
     "pvc-sessions.yaml",
     "services.yaml",
@@ -38,6 +39,9 @@ MANIFESTS = [
 # must reproduce them exactly, or an existing deployment would be duplicated
 # instead of updated.
 STAGING_RESOURCES = {
+    ("ServiceAccount", "wizard-v2-api"),
+    ("Role", "wizard-v2-api-sandbox"),
+    ("RoleBinding", "wizard-v2-api-sandbox"),
     ("PersistentVolumeClaim", "wizard-v2-db-data"),
     ("Deployment", "wizard-v2-db"),
     ("Service", "wizard-v2-db"),
@@ -179,6 +183,14 @@ def test_the_api_uses_this_instances_database_token_and_storage(docs: list[dict]
         assert secret_ref(env_of(db["containers"][0])[var]) == f"{name}-db"
 
 
+def test_the_api_runs_sandbox_jobs_in_this_instances_runner_image(docs: list[dict], name: str) -> None:
+    """Otherwise an s4 run executes in staging's runner, with staging's gaik version."""
+    api = one(docs, "Deployment", f"{name}-api")["spec"]["template"]["spec"]["containers"][0]
+    image = env_of(api)["WIZARD_POC_RUNNER_IMAGE"]["value"]
+    assert image.endswith(f"/{name}-poc-runner:latest")
+    assert "PLACEHOLDER" not in image
+
+
 def test_the_secrets_file_serves_this_instance(docs: list[dict], name: str) -> None:
     db_secret = one(docs, "Secret", f"{name}-db")
     assert f"@{name}-db:5432/" in db_secret["stringData"]["database-url"]
@@ -197,9 +209,36 @@ def test_model_provider_keys_stay_project_wide(docs: list[dict], name: str) -> N
         "ANTHROPIC_FOUNDRY_API_KEY",
         "ANTHROPIC_FOUNDRY_RESOURCE",
         "ANTHROPIC_DEFAULT_SONNET_MODEL",
+        # The agent's Phase 4 schema generation calls Azure OpenAI from the
+        # api container; without these the wizard stops before any PoC.
+        "AZURE_API_KEY",
+        "AZURE_ENDPOINT",
+        "AZURE_API_VERSION",
+        "AZURE_DEPLOYMENT",
     ):
         assert secret_ref(env[var]) == "gaik-demo-api-keys", var
+        assert env[var]["valueFrom"]["secretKeyRef"].get("optional") is True, var
     assert ("Secret", "gaik-demo-api-keys") not in named(docs)
+
+
+def test_the_api_runs_as_its_own_service_account_with_only_the_sandbox_rights(
+    docs: list[dict], name: str
+) -> None:
+    """Jobs, pods and pod logs; no secrets. Without rbac.yaml the api ran as the
+    namespace default account and either could not create Jobs or, where that
+    account had been given `edit`, could read every Secret in the project."""
+    api = one(docs, "Deployment", f"{name}-api")["spec"]["template"]["spec"]
+    assert api["serviceAccountName"] == f"{name}-api"
+    one(docs, "ServiceAccount", f"{name}-api")
+    binding = one(docs, "RoleBinding", f"{name}-api-sandbox")
+    assert binding["subjects"] == [{"kind": "ServiceAccount", "name": f"{name}-api"}]
+    assert binding["roleRef"]["name"] == f"{name}-api-sandbox"
+    role = one(docs, "Role", f"{name}-api-sandbox")
+    resources = {r for rule in role["rules"] for r in rule["resources"]}
+    # jobs/status is its own resource for RBAC: read_namespaced_job_status
+    # is Forbidden without it even when `jobs` may be read.
+    assert resources == {"jobs", "jobs/status", "pods", "pods/log"}
+    assert "secrets" not in resources
 
 
 def test_images_are_per_instance(docs: list[dict], name: str) -> None:
@@ -224,3 +263,25 @@ def test_render_needs_no_cluster_but_still_needs_a_project() -> None:
     )
     assert result.returncode != 0
     assert "PROJECT" in result.stdout + result.stderr
+
+
+# ---------------------------------------------------------------------------
+# The toolkit version is pinned in two images and must be the same in both
+# ---------------------------------------------------------------------------
+
+IMPL_DIR = OPENSHIFT_DIR.parents[1]
+
+
+def _gaik_version_pin(dockerfile: Path) -> str:
+    match = re.search(r"^ARG GAIK_VERSION=(\S+)$", dockerfile.read_text(), re.M)
+    assert match, f"{dockerfile} has no ARG GAIK_VERSION pin"
+    return match.group(1)
+
+
+def test_the_api_and_the_runner_pin_the_same_gaik_version() -> None:
+    """The api generates the extraction schema with gaik (Phase 4) and the
+    runner executes the PoC with gaik; two versions would mean a schema the
+    run does not read the same way. Bump both with the registry sync."""
+    api = _gaik_version_pin(IMPL_DIR / "wizard_api" / "Dockerfile")
+    runner = _gaik_version_pin(IMPL_DIR / "deploy" / "poc-runner" / "Dockerfile")
+    assert api == runner, f"wizard_api pins gaik {api}, poc-runner pins {runner}"

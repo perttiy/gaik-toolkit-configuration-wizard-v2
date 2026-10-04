@@ -145,9 +145,11 @@ export type Dict = {
   pocPhaseFailed: string;
   pocPhaseTimeout: string;
   pocRunError: string;
+  pocRunInterrupted: string;
   pocLogNoBackend: string;
   pocIdle: string;
   pocGeneratedTitle: string;
+  pocNotReadyTitle: string;
   pocDownload: string;
   pocNotGenerated: string;
   pocSuccess: string;
@@ -162,6 +164,14 @@ export type Dict = {
   pocLogWrote: string;
   pocLogFailed: string;
   pocLogAgentPackage: string;
+  pocInputsTitle: string;
+  pocInputsEmpty: string;
+  pocInputUpload: string;
+  pocInputUploading: string;
+  pocInputRemove: string;
+  pocInputFailed: string;
+  pocDeployable: string;
+  pocDeployableHint: string;
   gateNotice: string;
   previous: string;
   nextPhase: string;
@@ -355,9 +365,11 @@ const fi: Dict = {
   pocPhaseFailed: "Ajo epäonnistui",
   pocPhaseTimeout: "Ajo keskeytettiin 10 minuutin rajaan",
   pocRunError: "Ajoa ei voitu käynnistää",
+  pocRunInterrupted: "Ajon seuranta keskeytyi",
   pocLogNoBackend: "PoC-pakettia ei voi generoida: wizard_api ei ole käytettävissä.",
   pocIdle: "PoC:tä ei ole vielä ajettu. Aja se nähdäksesi lokit ja tuloksen.",
   pocGeneratedTitle: "Generoitu PoC-paketti",
+  pocNotReadyTitle: "PoC-paketti ei ole valmis — puuttuu:",
   pocDownload: "Lataa PoC",
   pocNotGenerated:
     "PoC-pakettia ei ole vielä generoitu. Se syntyy kun wizard etenee Gate 3:een asti.",
@@ -374,6 +386,14 @@ const fi: Dict = {
   pocLogFailed: "PoC-paketin generointi epäonnistui.",
   pocLogAgentPackage:
     "Agentti on jo tuottanut PoC-paketin tässä keskustelussa — säilytetään se sellaisenaan.",
+  pocInputsTitle: "Syöteaineisto (sample_input)",
+  pocInputsEmpty: "Ei syötetiedostoja. PoC lukee syötteensä tästä kansiosta — lisää esimerkiksi testilasku-PDF ennen ajoa.",
+  pocInputUpload: "Lisää tiedosto",
+  pocInputUploading: "Lisätään…",
+  pocInputRemove: "Poista",
+  pocInputFailed: "Tiedoston lisäys epäonnistui",
+  pocDeployable: "Lataa toimitettava paketti",
+  pocDeployableHint: "Avautuu, kun sandbox-ajo on onnistunut: paketti ilman syöteaineistoa ja ajon tuloksia.",
   gateNotice:
     "Tämä on gate-vaihe. Hyväksy jatkaaksesi seuraavaan vaiheeseen.",
   previous: "← Edellinen",
@@ -596,9 +616,11 @@ const en: Dict = {
   pocPhaseFailed: "Run failed",
   pocPhaseTimeout: "Run stopped at the 10-minute limit",
   pocRunError: "The run could not be started",
+  pocRunInterrupted: "Following the run was interrupted",
   pocLogNoBackend: "The PoC package cannot be generated: wizard_api is unavailable.",
   pocIdle: "PoC has not been run yet. Run it to see logs and the result.",
   pocGeneratedTitle: "Generated PoC package",
+  pocNotReadyTitle: "The PoC package is not ready — missing:",
   pocDownload: "Download PoC",
   pocNotGenerated:
     "The PoC package has not been generated yet. It appears once the wizard reaches Gate 3.",
@@ -615,6 +637,14 @@ const en: Dict = {
   pocLogFailed: "PoC package generation failed.",
   pocLogAgentPackage:
     "The agent already produced a PoC package in this conversation — keeping it as is.",
+  pocInputsTitle: "Sample input (sample_input)",
+  pocInputsEmpty: "No input files. The PoC reads its input from this folder — add e.g. a test invoice PDF before running.",
+  pocInputUpload: "Add file",
+  pocInputUploading: "Adding…",
+  pocInputRemove: "Remove",
+  pocInputFailed: "The file could not be added",
+  pocDeployable: "Download deployable package",
+  pocDeployableHint: "Opens once a sandbox run has succeeded: the package without sample input and run output.",
   gateNotice: "This is a gate step. Approve to continue to the next step.",
   previous: "← Previous",
   nextPhase: "Next step →",

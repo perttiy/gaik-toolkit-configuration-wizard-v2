@@ -30,6 +30,8 @@ spec:
       labels:
         app: NAME_PLACEHOLDER-api
     spec:
+      # The ServiceAccount from rbac.yaml: Jobs, pods and pod logs, nothing else.
+      serviceAccountName: NAME_PLACEHOLDER-api
       containers:
         - name: NAME_PLACEHOLDER-api
           # Per-instance image repository: two stacks sharing one `:latest` tag
@@ -82,12 +84,50 @@ spec:
                   name: gaik-demo-api-keys
                   key: ANTHROPIC_DEFAULT_SONNET_MODEL
                   optional: true
+            # --- Model provider for the agent's own tool calls ----------------
+            # Phase 4 (generate_schema.py → GAIK SchemaGenerator) calls Azure
+            # OpenAI from inside this container, exactly as the demo app does.
+            # The agent inherits the process environment, so these have to be
+            # here, not only in the sandbox Job (sandbox-job.yaml gives the run
+            # container the same four). Same shared Secret, optional for the
+            # same reason; AZURE_DEPLOYMENT may be absent, gaik then uses its
+            # default deployment.
+            - name: AZURE_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: gaik-demo-api-keys
+                  key: AZURE_API_KEY
+                  optional: true
+            - name: AZURE_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: gaik-demo-api-keys
+                  key: AZURE_ENDPOINT
+                  optional: true
+            - name: AZURE_API_VERSION
+              valueFrom:
+                secretKeyRef:
+                  name: gaik-demo-api-keys
+                  key: AZURE_API_VERSION
+                  optional: true
+            - name: AZURE_DEPLOYMENT
+              valueFrom:
+                secretKeyRef:
+                  name: gaik-demo-api-keys
+                  key: AZURE_DEPLOYMENT
+                  optional: true
             # --- Instance ----------------------------------------------------
             # Resource-name prefix of this stack. The sandbox runner needs it to
             # address this api (not the staging one) and this instance's token
             # Secret from a Job it creates (#91 follow-up).
             - name: WIZARD_INSTANCE_NAME
               value: NAME_PLACEHOLDER
+            # The image a sandbox run executes the PoC in. Set here so it is not
+            # hand state on the Deployment, and per instance so an s4 run does not
+            # use staging's runner (and staging's gaik version). Built and pushed
+            # by `deploy.sh poc-runner`.
+            - name: WIZARD_POC_RUNNER_IMAGE
+              value: image-registry.apps.2.rahti.csc.fi/PROJECT_PLACEHOLDER/NAME_PLACEHOLDER-poc-runner:latest
           volumeMounts:
             - name: session-output
               mountPath: /data/sessions

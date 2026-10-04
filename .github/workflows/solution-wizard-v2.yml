@@ -2,18 +2,24 @@ name: Solution Wizard V2
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main, dev, sync-v1, sprint4]
     paths:
       - "implementation_layer/solution_wizard_v2/**"
       - "implementation_layer/wizard_api/**"
       - "implementation_layer/solution_wizard/**"
+      - "implementation_layer/deploy/**"
+      - "implementation_layer/unit_tests/test_sandbox_job_manifest.py"
+      - "implementation_layer/unit_tests/test_deploy_instances.py"
       - ".github/workflows/solution-wizard-v2.yml"
   pull_request:
-    branches: [main, dev]
+    branches: [main, dev, sync-v1, sprint4]
     paths:
       - "implementation_layer/solution_wizard_v2/**"
       - "implementation_layer/wizard_api/**"
       - "implementation_layer/solution_wizard/**"
+      - "implementation_layer/deploy/**"
+      - "implementation_layer/unit_tests/test_sandbox_job_manifest.py"
+      - "implementation_layer/unit_tests/test_deploy_instances.py"
       - ".github/workflows/solution-wizard-v2.yml"
   workflow_dispatch:
 
@@ -63,13 +69,23 @@ jobs:
           python-version: "3.11"
       - name: Install solution_wizard
         working-directory: implementation_layer/solution_wizard
-        run: pip install -e . pytest
+        run: pip install -e . pytest pyyaml python-dotenv
       # gaik is deliberately not installed: the reference-card structural tests
       # skip without it, and checking cards against a released gaik is the
-      # gaik-sync skill's job, not this workflow's.
+      # gaik-sync skill's job, not this workflow's. The four --ignore'd files
+      # are UPSTREAM's (GAIK-project/gaik-toolkit; see GITFLOW.md): they import
+      # gaik at module or fixture level and upstream runs them with gaik
+      # installed. test_provider_scaffolding needs gaik too (every case errors
+      # on `import gaik` once python-dotenv is present). Do not "fix" them here.
+      # Tests of the fork's own that need gaik use pytest.importorskip and skip.
       - name: Pytest solution_wizard
         working-directory: implementation_layer/solution_wizard
-        run: pytest -q
+        run: >-
+          pytest -q
+          --ignore=tests/test_decimal_schema_persistence.py
+          --ignore=tests/test_generate_schema_cli.py
+          --ignore=tests/test_pipeline_composite_loading.py
+          --ignore=tests/test_provider_scaffolding.py
 
   solution-wizard-v2:
     runs-on: ubuntu-latest
@@ -117,6 +133,27 @@ jobs:
           NEXT_PUBLIC_DEV_AUTH: "true"
           NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: ci-encryption-key-32-characters!!
         run: npm run test:e2e
+
+  # The manifests under deploy/ are the sandbox's security boundary and the
+  # deploy recipe; the tests that assert them live in implementation_layer/
+  # unit_tests and are run by test.yml only for main and dev. Here they run on
+  # the branches the s4 stack is built from. Only the two files that cover
+  # deploy/ and need nothing but pytest and PyYAML: the rest of unit_tests
+  # needs the full gaik install and stays with test.yml.
+  deploy-manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test dependencies
+        run: pip install pytest pyyaml
+      - name: Pytest deploy manifests and scripts
+        run: >-
+          pytest -q
+          implementation_layer/unit_tests/test_sandbox_job_manifest.py
+          implementation_layer/unit_tests/test_deploy_instances.py
 
   # Traceability only — this tag does NOT match wizard-v2* so it never
   # triggers wizard-v2-deploy.yml. deploy.sh (run manually) picks up the
