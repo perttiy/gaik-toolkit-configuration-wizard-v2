@@ -141,8 +141,8 @@ def test_skill_tells_the_agent_paths_are_not_json_and_to_key_manifests_once():
 
     assert "`Path` objects are not JSON" in text
     assert "spec.model_dump(mode=\"json\")" in text
-    assert "Look a file up the way you keyed it" in text
-    assert "relative_to(sample_dir).as_posix()" in text
+    # The manifest lookup is the scaffolded helper's now (#251).
+    assert "do not write your own lookup" in text
 
 
 def test_the_report_writer_card_warns_that_spec_sources_are_paths():
