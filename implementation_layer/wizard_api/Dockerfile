@@ -35,7 +35,7 @@ RUN pip install --no-cache-dir -e /solution_wizard
 # them to check a call before the user's first run (#256). The two lists are
 # kept equal by a test (test_deploy_instances).
 ARG GAIK_VERSION=0.8.2
-ARG GAIK_EXTRAS="extract,transcriber,enhance-transcript,audio-to-structured-data,llm-judge,vision-extract,multimodal-parser,documents-to-structured-data-cpu,evaluators,report-writer"
+ARG GAIK_EXTRAS="extract,transcriber,enhance-transcript,audio-to-structured-data,llm-judge,vision-extract,multimodal-parser,documents-to-structured-data-cpu,evaluators,report-writer,vector-store"
 RUN pip install --no-cache-dir "gaik[${GAIK_EXTRAS}]==${GAIK_VERSION}"
 
 
@@ -57,6 +57,9 @@ for module in (
     "gaik.software_components.parsers.multimodal_parser",
     "gaik.software_components.transcriber",
     "gaik.software_components.validators",
+    # vector-store: gaik imports chromadb inside VectorStore.__init__, at the first
+    # call, so only an explicit import here catches a runner without it (#268).
+    "chromadb",
     "yaml",
     "pydantic",
     "dotenv",

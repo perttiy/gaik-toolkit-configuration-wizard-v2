@@ -54,7 +54,7 @@ ARG GAIK_VERSION=0.8.2
 # anthropic), and the vision-extract extra alone does not pull those in: the
 # first invoice PoC on s4 died on `No module named 'markdown_it'` before any
 # model call. The smoke test below imports vision_extractor for that reason.
-ARG GAIK_EXTRAS="extract,transcriber,enhance-transcript,audio-to-structured-data,llm-judge,vision-extract,multimodal-parser,documents-to-structured-data-cpu,evaluators,report-writer"
+ARG GAIK_EXTRAS="extract,transcriber,enhance-transcript,audio-to-structured-data,llm-judge,vision-extract,multimodal-parser,documents-to-structured-data-cpu,evaluators,report-writer,vector-store"
 
 # pyyaml is the scaffolded run_poc.py's own import (`import yaml`) and is not a
 # gaik dependency; pydantic and python-dotenv arrive with gaik core. reportlab is
@@ -78,6 +78,9 @@ for module in (
     "gaik.software_components.parsers.multimodal_parser",
     "gaik.software_components.transcriber",
     "gaik.software_components.validators",
+    # vector-store: gaik imports chromadb inside VectorStore.__init__, at the first
+    # call, so only an explicit import here catches a runner without it (#268).
+    "chromadb",
     "yaml",
     "reportlab",
     "pydantic",
