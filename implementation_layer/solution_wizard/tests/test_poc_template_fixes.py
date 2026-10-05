@@ -32,7 +32,7 @@ def provider_config(monkeypatch):
     namespace: dict = {}
     source = (TEMPLATES / "_common" / "provider_config.py.tmpl").read_text(encoding="utf-8")
     exec(compile(source, "provider_config.py", "exec"), namespace)
-    return types.SimpleNamespace(**namespace)
+    return types.SimpleNamespace(**namespace, _ns=namespace)
 
 
 def test_audio_model_in_stage_model_goes_to_transcription_model(provider_config):
@@ -191,3 +191,105 @@ def test_plain_values_are_left_alone(provider_config):
 
     assert result["model"] == "chat-model" and result["top_k"] == 5
     assert config["stages"]["answer"]["model"] == "chat-model"  # the config is not mutated
+
+
+def _needs_keys(provider_config):
+    """get_llm_config as gaik has it: a provider without its key raises ValueError."""
+    import os
+
+    def get_llm_config(provider, **settings):
+        if provider == "openai" and not os.environ.get("OPENAI_API_KEY"):
+            raise ValueError("OPENAI_API_KEY not found in environment; provide 'api_key' explicitly")
+        result = {"provider": provider, **settings}
+        if provider == "azure":  # gaik fills Azure's own defaults
+            result.setdefault("model", "azure-chat-default")
+            result.setdefault("embedding_model", "text-embedding-3-small")
+        return result
+
+    provider_config._ns["get_llm_config"] = get_llm_config
+
+
+def test_a_stage_on_a_provider_without_a_key_runs_on_azure_when_azure_is_there(
+    provider_config, monkeypatch, capsys
+):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("AZURE_API_KEY", "k")
+    monkeypatch.setenv("AZURE_ENDPOINT", "https://azure.invalid/")
+    _needs_keys(provider_config)
+    config = {
+        "stages": {
+            "extraction": {"provider": "openai", "model": "gpt-6-luna"},
+            "embedding": {"provider": "openai", "model": "text-embedding-3-large"},
+        }
+    }
+
+    chat = provider_config.get_stage_config(config, "extraction")
+    embedding = provider_config.get_stage_config(config, "embedding")
+
+    # a model of the other provider's catalog is not an Azure deployment: dropped, and
+    # Azure's own default takes its place
+    assert chat["provider"] == "azure" and chat["model"] == "azure-chat-default"
+    assert embedding["provider"] == "azure"
+    assert embedding["embedding_model"] == "text-embedding-3-small"
+    out = capsys.readouterr().out
+    assert "WARNING" in out and "Azure" in out and "dropped" in out
+
+
+def test_a_missing_key_is_still_an_error_when_azure_is_not_there_either(
+    provider_config, monkeypatch
+):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("AZURE_API_KEY", raising=False)
+    monkeypatch.delenv("AZURE_ENDPOINT", raising=False)
+    _needs_keys(provider_config)
+    config = {"stages": {"extraction": {"provider": "openai"}}}
+
+    with pytest.raises(ValueError, match="OPENAI_API_KEY"):
+        provider_config.get_stage_config(config, "extraction")
+
+
+def test_a_provider_that_has_its_key_is_left_alone(provider_config, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "k")
+    monkeypatch.setenv("AZURE_API_KEY", "k")
+    monkeypatch.setenv("AZURE_ENDPOINT", "https://azure.invalid/")
+    _needs_keys(provider_config)
+    config = {"stages": {"extraction": {"provider": "openai", "model": "gpt-6-luna"}}}
+
+    result = provider_config.get_stage_config(config, "extraction")
+
+    assert result["provider"] == "openai" and result["model"] == "gpt-6-luna"
+
+
+def test_other_errors_are_not_turned_into_azure(provider_config, monkeypatch):
+    monkeypatch.setenv("AZURE_API_KEY", "k")
+    monkeypatch.setenv("AZURE_ENDPOINT", "https://azure.invalid/")
+
+    def get_llm_config(provider, **settings):
+        raise ValueError("unsupported model family")
+
+    provider_config._ns["get_llm_config"] = get_llm_config
+    config = {"stages": {"extraction": {"provider": "openai"}}}
+
+    with pytest.raises(ValueError, match="unsupported model family"):
+        provider_config.get_stage_config(config, "extraction")
+
+
+def test_self_hosted_whisper_keeps_its_own_path(provider_config, monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("AZURE_API_KEY", "k")
+    monkeypatch.setenv("AZURE_ENDPOINT", "https://azure.invalid/")
+    _needs_keys(provider_config)
+    config = {
+        "stages": {"transcription": {"provider": "openai", "transcription_model": "whisper_local"}}
+    }
+
+    result = provider_config.get_stage_config(config, "transcription")
+
+    assert result["provider"] == "openai" and result["transcription_model"] == "whisper_local"
+
+
+def test_skill_names_azure_as_the_provider_of_a_sandbox_poc():
+    text = SKILL.read_text(encoding="utf-8")
+
+    assert "Provider of a PoC that runs in the wizard's sandbox: `azure`" in text
+    assert "do not pick `openai` as a neutral default" in text
