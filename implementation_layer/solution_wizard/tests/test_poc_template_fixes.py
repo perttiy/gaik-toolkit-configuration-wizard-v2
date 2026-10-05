@@ -293,3 +293,16 @@ def test_skill_names_azure_as_the_provider_of_a_sandbox_poc():
 
     assert "Provider of a PoC that runs in the wizard's sandbox: `azure`" in text
     assert "do not pick `openai` as a neutral default" in text
+
+
+def test_skill_gives_the_extraction_prompt_rules_from_uc05():
+    """Each rule answers a miss that recurred in every UC05 run (#255)."""
+    text = SKILL.read_text(encoding="utf-8")
+
+    assert "Show each citation format as a filled-in example, never as a placeholder" in text
+    assert "Normalise dates to ISO 8601" in text
+    assert "A statement that something was *not* decided is not a decision" in text
+    assert "Record a gap once" in text
+    assert "cite the\n  recording *and* the agenda page" in text
+    # The hybrid path refines the scaffolded prompt; it is pointed at the same rules.
+    assert "applying the citation, date and decision rules of Step 4.2" in text
