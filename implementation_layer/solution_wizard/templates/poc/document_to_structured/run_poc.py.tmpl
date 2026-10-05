@@ -45,6 +45,27 @@ def _requirements_hash() -> str:
     return hashlib.sha256(req_path.read_bytes()).hexdigest()
 
 
+def _normalise_field_defaults(schema_dir: Path, schema_name: str) -> None:
+    """gaik's FieldSpec.default is a string or null; a hand edit that wrote a list or
+    number there (e.g. ``[]`` for a list field) makes the approved schema unloadable.
+    Replace such defaults with null and say so."""
+    req_path = schema_dir / f"{schema_name}_requirements.json"
+    if not req_path.exists():
+        return
+    data = json.loads(req_path.read_text(encoding="utf-8"))
+    fixed = []
+    for field in data.get("fields", []):
+        default = field.get("default")
+        if default is not None and not isinstance(default, str):
+            fixed.append(field.get("field_name") or field.get("name") or "?")
+            field["default"] = None
+            if "has_explicit_default" in field:
+                field["has_explicit_default"] = False
+    if fixed:
+        req_path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        print(f"WARNING: set a non-string default to null in {req_path.name} for: {', '.join(fixed)}")
+
+
 def _load_schema_if_fresh(pipeline, schema_dir: Path, schema_name: str):
     """Load the saved schema if it exists and the requirements prompt hasn't changed.
 
@@ -63,6 +84,7 @@ def _load_schema_if_fresh(pipeline, schema_dir: Path, schema_name: str):
             return None, None, current_hash
 
     try:
+        _normalise_field_defaults(schema_dir, schema_name)
         existing = pipeline.load_schema(schema_dir, schema_name)
         if existing:
             print("Using approved schema (requirements unchanged).")
