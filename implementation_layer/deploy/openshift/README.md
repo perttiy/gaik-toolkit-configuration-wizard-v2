@@ -149,17 +149,13 @@ build runs in its own `…-build` pod and its log starts with
 `wizard-v2-s4-<part>:latest`, and the Deployments pull `:latest` with
 `imagePullPolicy: Always`, so a new image is used when the pods restart.
 
-> **Status of this section.** The checking commands below were run on 4 Oct 2026.
-> The `oc start-build` lines are reconstructed from the BuildConfigs and from
-> `deploy.sh` (build contexts, build args) and have **not** been confirmed against
-> the commands used for the existing s4 builds. Whoever deploys this way next:
-> confirm or correct them here.
+> **Status of this section.** The checking commands were run on 4 Oct 2026, and
+> the build commands below are the ones used for the s4 builds that day, as
+> corrected by the person who ran them. A command that differs from what the
+> cluster does is a bug in this file: correct it here.
 
-Work from a clean checkout of the branch to deploy, **outside** your working tree
-and without `node_modules`, so that what is uploaded is what is in git and `oc`
-records the commit in the build (a build started from a git directory shows
-`spec.revision.git`; the existing api and web builds show none, so what they
-contained can only be inferred):
+Work from a clean checkout of the branch to deploy, **outside** your working tree,
+so that what is uploaded is what is in git:
 
 ```bash
 git fetch origin
@@ -170,22 +166,69 @@ Nobody else may be building the same instance (`oc get builds | grep s4`); build
 of one BuildConfig queue, and two people restarting the Deployments confuse the
 result.
 
-| Part | Upload directory | Build args | After the build |
-|---|---|---|---|
-| api | `implementation_layer` (the BuildConfig's Dockerfile is `wizard_api/Dockerfile`, which also copies `solution_wizard/`; the last stage, `production`, is the default) | `APP_VERSION` | `oc rollout restart deploy/wizard-v2-s4-api` |
-| web | `implementation_layer/solution_wizard_v2` (the Dockerfile is at its root) | `NEXT_PUBLIC_APP_VERSION`; the BuildConfig already has `NEXT_PUBLIC_DEV_AUTH=true` and empty Supabase values | `oc rollout restart deploy/wizard-v2-s4-web` |
-| poc-runner | `implementation_layer/deploy/poc-runner` | none | nothing: the Job names the image per run |
+**Why on the cluster at all.** A local `deploy.sh api` or `deploy.sh poc-runner`
+failed on pip read timeouts over a ~40 kB/s connection; the cluster has the
+bandwidth. `deploy.sh` could get this as an optional `--on-cluster` path.
+
+**Build arguments go into the BuildConfig, not onto `start-build`.** On a binary
+build `oc start-build --build-arg ...` only prints
+`WARNING: Specifying build arguments with binary builds is not supported` and the
+value is not used (the api then reports `APP_VERSION=dev`). Set the argument on the
+BuildConfig first, every time; a stale value stays there and showed an older commit
+than the one built:
 
 ```bash
-oc start-build wizard-v2-s4-api --from-dir=implementation_layer \
-  --build-arg=APP_VERSION="$(git describe --tags --always)" --follow
-oc rollout restart deploy/wizard-v2-s4-api
-oc rollout status deploy/wizard-v2-s4-api --timeout=300s
+oc -n gaik patch bc wizard-v2-s4-api --type merge -p \
+  '{"spec":{"strategy":{"dockerStrategy":{"buildArgs":[{"name":"APP_VERSION","value":"'"$(git describe --tags --always)"'"}]}}}}'
 ```
 
-The version build arg is stored in the BuildConfig and goes stale (it showed an
-older commit than the one built); always pass it. Typical durations on 4 Oct: api
-~3 min, web ~10 min, runner ~3 min.
+**Upload only what the Dockerfile copies.** A binary build uploads the directory
+from your machine. `implementation_layer` as a whole is about 105 MB
+(`toolkit_demo_app` 64 MB, `examples` 24 MB); the api needs 3 MB of it.
+
+| Part | Upload directory | Build args (set on the BuildConfig) | After the build |
+|---|---|---|---|
+| api | a context `ctx/` holding `wizard_api/` (without `.venv`), `solution_wizard/` and `deploy/openshift/sandbox-job.yaml`; the BuildConfig's Dockerfile is `wizard_api/Dockerfile`, last stage `production` | `APP_VERSION` | `oc rollout restart deploy/wizard-v2-s4-api` |
+| web | `implementation_layer/solution_wizard_v2` without `node_modules`, `.next`, `.venv` (1.5 MB; the Dockerfile is at its root) | `NEXT_PUBLIC_APP_VERSION`; the BuildConfig already has `NEXT_PUBLIC_DEV_AUTH=true` and empty Supabase values (the staging `wizard-v2-web` BuildConfig has the same) | `oc rollout restart deploy/wizard-v2-s4-web` |
+| poc-runner | `implementation_layer/deploy/poc-runner` | none | tag the build with its version (below); the Job names the image per run |
+
+```bash
+# api: build the 3 MB context, then build
+rsync -a --exclude .venv --exclude __pycache__ \
+  implementation_layer/wizard_api implementation_layer/solution_wizard ctx/
+mkdir -p ctx/deploy/openshift && cp implementation_layer/deploy/openshift/sandbox-job.yaml ctx/deploy/openshift/
+oc -n gaik start-build wizard-v2-s4-api --from-dir=ctx --follow --wait
+oc -n gaik rollout restart deploy/wizard-v2-s4-api
+oc -n gaik rollout status deploy/wizard-v2-s4-api --timeout=300s
+
+# runner: build, then give the image a version tag
+oc -n gaik start-build wizard-v2-s4-poc-runner --from-dir=implementation_layer/deploy/poc-runner --follow --wait
+oc -n gaik tag wizard-v2-s4-poc-runner:latest wizard-v2-s4-poc-runner:<APP_VERSION>
+```
+
+The web build is the same shape (`oc -n gaik start-build wizard-v2-s4-web --from-dir=<directory above> --follow --wait`,
+then the restart). Typical durations on 4 Oct: api ~3 min, web ~10 min, runner ~3 min.
+
+**Manifests** (Deployments, Services, the sandbox Job template) do not need Docker:
+
+```bash
+PROJECT=gaik INSTANCE=s4 ./deploy.sh manifests
+oc -n gaik rollout restart deploy/wizard-v2-s4-api   # and -web, when its manifest changed
+# a single file:
+PROJECT=gaik INSTANCE=s4 ./deploy.sh render <manifest> | oc apply -f -
+```
+
+**Creating the BuildConfigs** was done on 4 Oct and is not repeated for s4; for a
+new instance:
+
+```bash
+oc -n gaik new-build --binary --name wizard-v2-s4-<part> --strategy docker --to wizard-v2-s4-<part>:latest
+oc -n gaik patch bc wizard-v2-s4-api --type merge -p \
+  '{"spec":{"strategy":{"dockerStrategy":{"dockerfilePath":"wizard_api/Dockerfile"}}}}'
+```
+
+An upload from a plain directory records no git revision in the build, so what an
+image contains is read from the image (below), not from the build.
 
 Every command above names `s4`. This project is shared with about twenty other
 applications and with the staging stack (`wizard-v2-*`, no `-s4`): a build or a
