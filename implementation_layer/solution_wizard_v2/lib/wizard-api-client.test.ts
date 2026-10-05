@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   apiCreateSession,
+  apiDeletePocInput,
+  apiGetDeployablePocZip,
+  apiListPocInputs,
+  apiUploadPocInput,
   apiGetSession,
   apiGetSessionBpmn,
   apiListSessions,
@@ -249,5 +253,103 @@ describe("service token on outgoing calls (#132)", () => {
     vi.stubEnv("WIZARD_API_TOKEN", "   ");
     await apiListSessions("u1");
     expect(TOKEN_HEADER in headersOfCall(0)).toBe(false);
+  });
+});
+
+
+// --- User header (#134) -------------------------------------------------------
+
+describe("user header on outgoing calls (#134)", () => {
+  const USER_HEADER = "X-Wizard-User-Id";
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    vi.resetModules();
+    fetchMock = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ sessions: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    process.env.WIZARD_API_URL = "http://api.test";
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.doUnmock("@/lib/current-user");
+    delete process.env.WIZARD_API_URL;
+  });
+
+  it("names the signed-in user so wizard_api can refuse another user's session", async () => {
+    vi.doMock("@/lib/current-user", () => ({
+      getCurrentUser: vi.fn(async () => ({ email: "alice@example.com" })),
+    }));
+    const { apiListSessions } = await import("@/lib/wizard-api-client");
+    await apiListSessions("alice@example.com");
+    const headers = (fetchMock.mock.calls[0] as [string, RequestInit & { headers: Record<string, string> }])[1]
+      .headers;
+    expect(headers[USER_HEADER]).toBe("alice@example.com");
+  });
+
+  it("sends no user header where there is no signed-in user", async () => {
+    vi.doMock("@/lib/current-user", () => ({
+      getCurrentUser: vi.fn(async () => null),
+    }));
+    const { apiListSessions } = await import("@/lib/wizard-api-client");
+    await apiListSessions("alice@example.com");
+    const headers = (fetchMock.mock.calls[0] as [string, RequestInit & { headers: Record<string, string> }])[1]
+      .headers;
+    expect(headers[USER_HEADER]).toBeUndefined();
+  });
+});
+
+describe("sample input and the deployable package (#95, #143)", () => {
+  beforeEach(() => {
+    vi.stubEnv("WIZARD_API_URL", "http://api.test");
+    vi.stubEnv("WIZARD_API_TOKEN", "svc-token");
+  });
+
+  it("lists the package's sample input files", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(new Response(JSON.stringify({ files: [{ name: "a.pdf", bytes: 3 }] })));
+    vi.stubGlobal("fetch", fetchMock);
+    const out = await apiListPocInputs("s1");
+    expect(out.files).toEqual([{ name: "a.pdf", bytes: 3 }]);
+    expect(fetchMock.mock.calls[0][0]).toBe("http://api.test/sessions/s1/poc/input");
+  });
+
+  it("uploads one file as multipart with the service token and no fixed content type", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response("{}", { status: 201 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const form = new FormData();
+    form.append("file", new Blob([new Uint8Array([1, 2, 3])]), "a.pdf");
+    const res = await apiUploadPocInput("s1", form);
+    expect(res.status).toBe(201);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit & { headers: Record<string, string> }];
+    expect(url).toBe("http://api.test/sessions/s1/poc/input");
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe(form);
+    expect(init.headers["X-Wizard-Service-Token"]).toBe("svc-token");
+    expect(Object.keys(init.headers).map((k) => k.toLowerCase())).not.toContain("content-type");
+  });
+
+  it("deletes a file by its encoded name", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await apiDeletePocInput("s1", "lasku 1.pdf");
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("http://api.test/sessions/s1/poc/input/lasku%201.pdf");
+    expect(init.method).toBe("DELETE");
+  });
+
+  it("fetches the deployable zip from its own endpoint, not the development zip", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response("zip", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const res = await apiGetDeployablePocZip("s1");
+    expect(res.ok).toBe(true);
+    expect(fetchMock.mock.calls[0][0]).toBe("http://api.test/sessions/s1/poc/deployable");
   });
 });
