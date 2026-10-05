@@ -92,19 +92,25 @@ def test_non_string_field_default_is_reset_to_null(template, tmp_path, capsys):
     end = source.index("def _load_schema_if_fresh")
     namespace = {"json": json, "Path": Path}
     exec(source[start:end], namespace)
+    # the real file layout: gaik writes {"model_name", "requirements_type", "requirements": {...}}
     requirements = {
-        "fields": [
-            {"field_name": "a", "default": "x", "has_explicit_default": True},
-            {"field_name": "b", "default": [], "has_explicit_default": True},
-            {"field_name": "c", "default": None, "has_explicit_default": False},
-        ]
+        "model_name": "Ticket",
+        "requirements_type": "single",
+        "requirements": {
+            "use_case_name": "ticket",
+            "fields": [
+                {"field_name": "a", "default": "x", "has_explicit_default": True},
+                {"field_name": "b", "default": [], "has_explicit_default": True},
+                {"field_name": "c", "default": None, "has_explicit_default": False},
+            ],
+        },
     }
     path = tmp_path / "output_schema_requirements.json"
     path.write_text(json.dumps(requirements), encoding="utf-8")
 
     namespace["_normalise_field_defaults"](tmp_path, "output_schema")
 
-    fields = json.loads(path.read_text(encoding="utf-8"))["fields"]
+    fields = json.loads(path.read_text(encoding="utf-8"))["requirements"]["fields"]
     assert fields[0]["default"] == "x" and fields[0]["has_explicit_default"] is True
     assert fields[1]["default"] is None and fields[1]["has_explicit_default"] is False
     assert fields[2]["default"] is None
@@ -114,6 +120,13 @@ def test_non_string_field_default_is_reset_to_null(template, tmp_path, capsys):
 def test_missing_requirements_file_is_left_alone(tmp_path):
     source = (TEMPLATES / "audio_to_structured" / "run_poc.py.tmpl").read_text(encoding="utf-8")
     namespace = {"json": json, "Path": Path}
-    exec(source[source.index("def _normalise_field_defaults") : source.index("def _load_schema_if_fresh")], namespace)
+    exec(
+        source[
+            source.index("def _normalise_field_defaults") : source.index(
+                "def _load_schema_if_fresh"
+            )
+        ],
+        namespace,
+    )
     namespace["_normalise_field_defaults"](tmp_path, "output_schema")
     assert list(tmp_path.iterdir()) == []
