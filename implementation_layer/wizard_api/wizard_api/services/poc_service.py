@@ -12,6 +12,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -368,6 +369,14 @@ def _imports(tree: ast.AST) -> list[tuple[str, int]]:
     return found
 
 
+_TODO_MARKER = re.compile(r"\b(TODO|FIXME)\b")
+
+
+def _todo_markers(source: str) -> list[int]:
+    """Line numbers of the TODO/FIXME markers in ``source`` (comments and strings)."""
+    return [n for n, line in enumerate(source.splitlines(), start=1) if _TODO_MARKER.search(line)]
+
+
 def _entrypoint_problems(source: str, poc_dir: str) -> list[str]:
     try:
         tree = ast.parse(source)
@@ -380,6 +389,18 @@ def _entrypoint_problems(source: str, poc_dir: str) -> list[str]:
     # statement counts as wiring a component.
     if not any(module.split(".")[0] == "gaik" for module, _ in imports):
         return [f"{_PACKAGE_ENTRYPOINT} does not wire any gaik component"]
+
+    # The agent writes the entrypoint in steps and leaves TODO markers where it
+    # has not been yet. A package that already imports gaik was offered as
+    # ready while nine such markers were still in it (#252): the markers say
+    # the author is not done, so the package is not.
+    markers = _todo_markers(source)
+    if markers:
+        first = markers[0]
+        return [
+            f"{_PACKAGE_ENTRYPOINT} still has {len(markers)} TODO marker(s), "
+            f"first at line {first}: the package is not finished"
+        ]
 
     # Without gaik in this environment we cannot tell what the runner has.
     if importlib.util.find_spec("gaik") is None:

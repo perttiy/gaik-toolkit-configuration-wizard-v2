@@ -172,6 +172,29 @@ def test_a_skeleton_whose_component_calls_are_comments_is_not_ready(tmp_path):
     assert _entry(tmp_path, skeleton) == ["run_poc.py does not wire any gaik component"]
 
 
+def test_an_entrypoint_the_agent_has_not_finished_is_not_ready(tmp_path):
+    """UC03 (#252): the tab said ready while run_poc.py still had nine TODO
+    markers, because it already imported gaik. The markers mean unfinished."""
+    unfinished = (
+        WIRED_ENTRYPOINT
+        + "def main():\n"
+        + "    # TODO: load the access manifest\n"
+        + "    pass  # FIXME wire the retriever\n"
+    )
+
+    problems = _entry(tmp_path, unfinished)
+
+    assert problems == [
+        "run_poc.py still has 2 TODO marker(s), first at line 4: the package is not finished"
+    ]
+
+
+def test_a_word_that_merely_contains_todo_is_not_a_marker(tmp_path):
+    source = WIRED_ENTRYPOINT + "todos = []\nMASTODON = 1\n"
+
+    assert _entry(tmp_path, source) == []
+
+
 def test_an_entrypoint_that_does_not_parse_is_reported_with_its_line(tmp_path):
     problems = _entry(tmp_path, "from gaik import x\ndef main(:\n    pass\n")
 
