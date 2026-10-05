@@ -671,6 +671,12 @@ python scripts/scaffold_poc.py --blueprint <output_dir>/use_case.blueprint.json 
    - Write `prompts/extraction_requirements.md` if the pipeline includes extraction (then run
      `generate_schema.py` as in Phase 4).
    - After wiring, confirm `python -c "import ast; ast.parse(open('poc/run_poc.py').read())"` passes.
+   - **Literal names in `config.yaml`.** Write the real model and deployment names, and only
+     the settings `provider_config.py` reads. Do not invent placeholders such as
+     `model: env:ANSWER_DEPLOYMENT`: nothing in the package sets that variable, and the sandbox
+     passes only the provider's own settings (`provider_config.py` drops an unset `env:` value and
+     falls back to the provider default, with a warning, which is a guess you did not mean to make).
+     Credentials stay in `.env`, never in `config.yaml`.
    - **`Path` objects are not JSON.** `ReportSpec.sources` holds `Path` objects (its values are
      `list[Path]`), so `json.dumps(spec.sources)` raises `TypeError: Object of type PosixPath is not
      JSON serializable` and the run dies before any model call (UC04, 5 Oct 2026). To print or save

@@ -151,3 +151,43 @@ def test_the_report_writer_card_warns_that_spec_sources_are_paths():
     sources = cards["ReportWriter"]["spec_fields"]["sources"]
 
     assert "Path objects" in sources and "json.dumps" in sources
+
+
+def test_env_placeholder_is_resolved_when_the_variable_is_set(provider_config, monkeypatch):
+    monkeypatch.setenv("ANSWER_DEPLOYMENT", "real-chat")
+    config = {"stages": {"answer": {"provider": "azure", "model": "env:ANSWER_DEPLOYMENT"}}}
+
+    assert provider_config.get_stage_config(config, "answer")["model"] == "real-chat"
+
+
+@pytest.mark.parametrize("spelling", ["env:ANSWER_DEPLOYMENT", "ENV:ANSWER_DEPLOYMENT"])
+def test_unset_env_placeholder_is_dropped_with_a_warning(
+    provider_config, monkeypatch, capsys, spelling
+):
+    monkeypatch.delenv("ANSWER_DEPLOYMENT", raising=False)
+    config = {"stages": {"answer": {"provider": "azure", "model": spelling}}}
+
+    result = provider_config.get_stage_config(config, "answer")
+
+    # the literal text must never reach the model API as a deployment name
+    assert "model" not in result
+    assert "ANSWER_DEPLOYMENT" in capsys.readouterr().out
+
+
+def test_env_placeholder_in_the_models_block_is_handled_too(provider_config, monkeypatch):
+    monkeypatch.delenv("CHAT_DEPLOYMENT", raising=False)
+    config = {"provider": "azure", "models": {"extraction": "env:CHAT_DEPLOYMENT"}}
+
+    assert "model" not in provider_config.get_stage_config(config, "extraction")
+
+
+def test_plain_values_are_left_alone(provider_config):
+    config = {
+        "stages": {"answer": {"provider": "azure", "model": "chat-model", "top_k": 5}},
+        "language": "en",
+    }
+
+    result = provider_config.get_stage_config(config, "answer")
+
+    assert result["model"] == "chat-model" and result["top_k"] == 5
+    assert config["stages"]["answer"]["model"] == "chat-model"  # the config is not mutated
