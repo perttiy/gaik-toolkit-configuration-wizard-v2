@@ -62,8 +62,10 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           runs=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100"             --jq '[.check_runs[] | select(.name == "wizard-api" or .name == "solution-wizard" or .name == "solution-wizard-v2" or .name == "deploy-manifests")]')
-          count=$(jq 'length' <<<"$runs")
-          echo "Solution Wizard V2 check runs on $SHA: $count"
+          # Distinct job names, not check runs: a rerun adds a second run with
+          # the same name, which must not stand in for a job that never ran.
+          count=$(jq '[.[].name] | unique | length' <<<"$runs")
+          echo "Solution Wizard V2 jobs with a check run on $SHA: $count"
           jq -r '.[] | "  \(.name): \(.status) / \(.conclusion // "-")"' <<<"$runs"
           if [ "$count" -lt 4 ]; then
             echo "::error::CI has not run (all four jobs) for $SHA. Push the branch, let solution-wizard-v2.yml finish, then deploy."
