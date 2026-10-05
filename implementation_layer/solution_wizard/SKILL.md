@@ -671,6 +671,18 @@ python scripts/scaffold_poc.py --blueprint <output_dir>/use_case.blueprint.json 
    - Write `prompts/extraction_requirements.md` if the pipeline includes extraction (then run
      `generate_schema.py` as in Phase 4).
    - After wiring, confirm `python -c "import ast; ast.parse(open('poc/run_poc.py').read())"` passes.
+   - **`Path` objects are not JSON.** `ReportSpec.sources` holds `Path` objects (its values are
+     `list[Path]`), so `json.dumps(spec.sources)` raises `TypeError: Object of type PosixPath is not
+     JSON serializable` and the run dies before any model call (UC04, 5 Oct 2026). To print or save
+     a spec, use `spec.model_dump(mode="json")` or `spec.save(path)`; to print the sources,
+     `{k: [str(p) for p in v] for k, v in spec.sources.items()}`.
+   - **Look a file up the way you keyed it.** When the package gates documents with a manifest
+     (access control, classification, a catalogue), build **one** function that turns a file path
+     into its key, for example `path.relative_to(sample_dir).as_posix()`, and use it for the
+     manifest keys *and* for every lookup. A manifest that names `documents/<name>.pdf` is not
+     found by `<name>.pdf` (UC03, 5 Oct 2026: the lookup missed every document and the run refused
+     to index them). Compare by that key, and when a file is missing from the manifest print which
+     file and which keys were available before stopping.
 
 **PDF report (when `technical_spec.output_types` includes `"pdf"`):** the scaffolder
 automatically copies `poc/pdf_report.py` (a ReportLab renderer), adds `reportlab` to

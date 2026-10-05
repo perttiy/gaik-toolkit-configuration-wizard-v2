@@ -117,3 +117,24 @@ def test_missing_requirements_file_is_left_alone(tmp_path):
     exec(source[source.index("def _normalise_field_defaults") : source.index("def _load_schema_if_fresh")], namespace)
     namespace["_normalise_field_defaults"](tmp_path, "output_schema")
     assert list(tmp_path.iterdir()) == []
+
+
+SKILL = Path(__file__).parent.parent / "SKILL.md"
+CARDS = Path(__file__).parent.parent / "registries" / "component_reference_cards.json"
+
+
+def test_skill_tells_the_agent_paths_are_not_json_and_to_key_manifests_once():
+    text = SKILL.read_text(encoding="utf-8")
+
+    assert "`Path` objects are not JSON" in text
+    assert "spec.model_dump(mode=\"json\")" in text
+    assert "Look a file up the way you keyed it" in text
+    assert "relative_to(sample_dir).as_posix()" in text
+
+
+def test_the_report_writer_card_warns_that_spec_sources_are_paths():
+    cards = json.loads(CARDS.read_text(encoding="utf-8"))
+
+    sources = cards["ReportWriter"]["spec_fields"]["sources"]
+
+    assert "Path objects" in sources and "json.dumps" in sources
