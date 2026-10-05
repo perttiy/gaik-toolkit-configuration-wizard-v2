@@ -562,7 +562,13 @@ export function WorkspacePanel({
     error: runStarted ? t.pocRunInterrupted : t.pocRunError,
   };
 
+  const runActive = runPhase === "pending" || runPhase === "running";
+
   async function runPoc() {
+    // Not while a run is streaming: its done frame would flip the terminal
+    // back to the run log mid-generation, and an idle phase would re-enable
+    // the Run button beside a Job still going.
+    if (runActive) return;
     setPocStatus("running");
     setLogs([]);
     // Generation takes the terminal back from an earlier run: otherwise its
@@ -787,7 +793,7 @@ export function WorkspacePanel({
                   <button
                     type="button"
                     onClick={runPoc}
-                    disabled={pocStatus === "running"}
+                    disabled={pocStatus === "running" || runActive}
                     className="btn-brand"
                   >
                     {pocStatus === "running"
@@ -802,7 +808,7 @@ export function WorkspacePanel({
                   <button
                     type="button"
                     onClick={runInSandbox}
-                    disabled={!pocGenerated || !pocReady || runPhase === "pending" || runPhase === "running"}
+                    disabled={!pocGenerated || !pocReady || runActive}
                     className="btn-secondary"
                     data-testid="poc-run-sandbox"
                   >
