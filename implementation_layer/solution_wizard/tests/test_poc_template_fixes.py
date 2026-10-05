@@ -140,7 +140,7 @@ def test_skill_tells_the_agent_paths_are_not_json_and_to_key_manifests_once():
     text = SKILL.read_text(encoding="utf-8")
 
     assert "`Path` objects are not JSON" in text
-    assert "spec.model_dump(mode=\"json\")" in text
+    assert 'spec.model_dump(mode="json")' in text
     assert "Look a file up the way you keyed it" in text
     assert "relative_to(sample_dir).as_posix()" in text
 
@@ -191,3 +191,12 @@ def test_plain_values_are_left_alone(provider_config):
 
     assert result["model"] == "chat-model" and result["top_k"] == 5
     assert config["stages"]["answer"]["model"] == "chat-model"  # the config is not mutated
+
+
+def test_skill_says_a_finished_entrypoint_has_no_todo_markers():
+    """#252: the api refuses a package whose run_poc.py has TODO/FIXME markers; the
+    agent must know the rule, or an ordinary note keeps a working package not ready."""
+    text = SKILL.read_text(encoding="utf-8")
+
+    assert "A finished `run_poc.py` has no TODO/FIXME markers" in text
+    assert "put follow-up ideas" in text and "in `README.md`" in text
