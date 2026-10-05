@@ -249,6 +249,24 @@ Write `<output_dir>/poc/prompts/extraction_requirements.md` now (before calling 
 The file must contain detailed, domain-specific instructions: field definitions, Finnish-language cues,
 allowed values, output format policy. The quality of this file directly determines extraction accuracy.
 
+The model copies what this file shows, literally. These rules came out of UC05 (meeting record from
+audio + agenda PDF, 4–5 Oct 2026), where the same misses recurred in every run because the prompt
+said nothing about them or showed a placeholder:
+
+- **Show each citation format as a filled-in example, never as a placeholder.** Write
+  `meeting.wav` and `agenda.pdf|2` with the real input file names, not `<audio file_name>`: the
+  model returned `<audio meeting.wav>` in every citation, angle brackets included.
+- **Normalise dates to ISO 8601 (`YYYY-MM-DD`)**, taking the year from the document or meeting
+  date when the source says only "September 29th". Keep a date the source does not pin down
+  (`next Friday` with no reference date) as `null` with the reason, not as spoken text.
+- **A statement that something was *not* decided is not a decision.** "We will not approve the
+  budget today; finance has to answer first" belongs under unresolved issues (or the equivalent
+  open-items field), never as a decision. Say so in the decisions field's rule.
+- **Record a gap once.** A missing owner or due date of an action stays on that action
+  (`owner: null` plus its uncertainty reason); do not repeat it as an unresolved issue.
+- **Cite every source an item rests on.** When a decision settles an agenda item, cite the
+  recording *and* the agenda page; when sources conflict, cite both sides.
+
 **Step 4.2b — Present the extraction prompt and get user approval**
 
 Before calling `generate_schema.py`, show the extraction prompt you just wrote and ask the user to review it:
@@ -634,7 +652,8 @@ python scripts/scaffold_poc.py --blueprint <output_dir>/use_case.blueprint.json 
    - The `run_poc.py` is fully generated. Your job is to write the `prompts/extraction_requirements.md`
      content (for non-RAG patterns) and the use-case-specific `README.md` prose.
    - Read the scaffolder's generated `poc/prompts/extraction_requirements.md` -- it was auto-generated
-     from `target_output_spec`. Review it and refine the requirements text to be clear and precise.
+     from `target_output_spec`. Review it and refine the requirements text to be clear and precise,
+     applying the citation, date and decision rules of Step 4.2.
    - Read `poc/README.md` and fill in any placeholder text that needs domain knowledge.
 
 2. If `pattern` is `_generic` (template_wired=False) -- a custom/hybrid pipeline:
