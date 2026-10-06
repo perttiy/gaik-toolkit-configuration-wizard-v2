@@ -425,10 +425,34 @@ def _entrypoint_problems(source: str, poc_dir: str) -> list[str]:
     return problems
 
 
+#: Package folders that hold inputs and results, never the package's own code.
+_NOT_CODE_DIRS = {"sample_input", "output", "__pycache__", ".venv", "venv"}
+
+
 def _is_local_module(poc_dir: str, name: str) -> bool:
-    return os.path.isfile(os.path.join(poc_dir, name + ".py")) or os.path.isdir(
-        os.path.join(poc_dir, name)
-    )
+    """A module the package ships itself: at its root, or one folder down.
+
+    One folder down covers the wizard's own layout: ``schemas/output_schema.py``
+    is imported after ``sys.path.insert(0, .../schemas)``, and a package that did
+    so was refused as importing a module the sandbox lacks (UC03, 6 Oct 2026).
+    """
+
+    def _here(folder: str) -> bool:
+        return os.path.isfile(os.path.join(folder, name + ".py")) or os.path.isdir(
+            os.path.join(folder, name)
+        )
+
+    if _here(poc_dir):
+        return True
+    try:
+        entries = os.scandir(poc_dir)
+    except OSError:
+        return False
+    with entries:
+        return any(
+            entry.is_dir() and entry.name not in _NOT_CODE_DIRS and _here(entry.path)
+            for entry in entries
+        )
 
 
 def _resolvable(module: str) -> bool:
