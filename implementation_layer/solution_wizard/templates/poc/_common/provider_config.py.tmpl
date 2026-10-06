@@ -44,6 +44,41 @@ def _stage_provider(config: dict, settings: dict) -> str:
     return resolve_provider(provider)
 
 
+#: Settings that belong to the provider that was asked for, not to Azure: a model or
+#: deployment name of another provider's catalog does not exist on the Azure resource.
+_PROVIDER_SPECIFIC = (
+    "model",
+    "embedding_model",
+    "transcription_model",
+    "base_url",
+    "api_key",
+    "model_family",
+)
+
+
+def _azure_instead(provider: str, error: Exception) -> bool:
+    """The sandbox holds only the Azure credentials. A stage whose provider has no key
+    there (the agent often records ``openai`` for a case that names no provider) cannot
+    run; when Azure is available it can run on Azure instead."""
+    return (
+        provider != "azure"
+        and "not found in environment" in str(error)
+        and bool(os.environ.get("AZURE_API_KEY") and os.environ.get("AZURE_ENDPOINT"))
+    )
+
+
+def _on_azure(stage: str, provider: str, settings: dict) -> dict:
+    dropped = sorted(key for key in settings if key in _PROVIDER_SPECIFIC)
+    print(
+        f"WARNING: stage {stage}: provider {provider!r} has no credentials here; "
+        "using Azure OpenAI instead"
+        + (f" (dropped {', '.join(dropped)}: they name {provider} models)" if dropped else "")
+        + "."
+    )
+    kept = {key: value for key, value in settings.items() if key not in _PROVIDER_SPECIFIC}
+    return get_llm_config("azure", **kept)
+
+
 def get_stage_config(config: dict, stage: str) -> dict:
     config = _resolve_env_values(config)
     settings = dict((config.get("stages") or {}).get(stage) or {})
@@ -82,12 +117,15 @@ def get_stage_config(config: dict, stage: str) -> dict:
     settings = {key: value for key, value in settings.items() if value is not None}
     try:
         result = get_llm_config(provider, **settings)
-    except ValueError:
+    except ValueError as exc:
         # Self-hosted Whisper takes LOCAL_TRANSCRIBER_* constructor arguments; OpenAI/Azure
         # credentials are then needed only for optional transcript enhancement.
-        if stage != "transcription" or settings.get("transcription_model") != "whisper_local":
+        if stage == "transcription" and settings.get("transcription_model") == "whisper_local":
+            result = {**settings, "provider": provider, "use_azure": provider == "azure"}
+        elif _azure_instead(provider, exc):
+            result = _on_azure(stage, provider, settings)
+        else:
             raise
-        result = {**settings, "provider": provider, "use_azure": provider == "azure"}
     if stage == "embedding" and not result.get("embedding_model"):
         raise ValueError("Configure an embedding model served by stages.embedding.provider.")
     return result
