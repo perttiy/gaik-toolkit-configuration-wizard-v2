@@ -177,9 +177,11 @@ args (baked into the bundle).
 - **Migrations** run on api startup (`alembic upgrade head`); the pod restarts
   until the DB is reachable.
 - **Test gate on deploy** — the workflow's `require-green-ci` job refuses a
-  commit whose three Solution Wizard V2 checks (`wizard-api`,
-  `solution-wizard`, `solution-wizard-v2`) are not all green, or that CI never
-  ran. Push the branch and let CI finish before tagging or dispatching.
+  commit whose four Solution Wizard V2 checks (`wizard-api`,
+  `solution-wizard`, `solution-wizard-v2`, `deploy-manifests`) are not all
+  green, or that CI never ran. `deploy-manifests` is the job that runs the
+  sandbox Job manifest and deploy-script tests, so a manifest change cannot be
+  deployed past a red test. Push the branch and let CI finish before tagging or dispatching.
   `deploy.sh` run by hand has no such gate.
 - **RAHTI_TOKEN expiry** — the Rahti `oc login` / registry token (CSC
   service-account token, not stored in this repo) is **~1 year** long. Record
