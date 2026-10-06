@@ -1,0 +1,406 @@
+"""Cases: the generated solution used as a working process, not only a package.
+
+A case is one pass through the use case's BPMN: someone gives the input (a voice
+report, documents), the PoC runs in the sandbox on that input, and a reviewer
+approves, returns or rejects what it produced. The UI builds its roles and
+screens from the BPMN and its review form from ``target_output_spec``; this
+module keeps each case's state and inputs and reads the run's result back.
+
+Cases live on disk beside the session's package (``<output_dir>/cases/<id>/``),
+like the package and its sample input do: ``case.json`` for the state and
+``inputs/`` for the files. A sandbox run of a case gets the package with that
+case's inputs in place of ``sample_input/`` (see the ``case`` parameter of the
+package download), so two cases never share or overwrite each other's input.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+import uuid
+import xml.etree.ElementTree as ET
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+from wizard_api.services import poc_service
+
+CASES_DIR = "cases"
+CASE_FILE = "case.json"
+INPUTS_DIR = "inputs"
+
+#: draft → running → review → approved | rejected, with review → returned →
+#: running for a correction, and running → failed when the run did not finish.
+STATUSES = ("draft", "running", "review", "returned", "approved", "rejected", "failed")
+EDITABLE = ("draft", "returned", "failed")
+
+OUTPUT_BEGIN = "=== POC OUTPUT BEGIN ==="
+OUTPUT_END = "=== POC OUTPUT END ==="
+
+
+class CaseNotFoundError(LookupError):
+    pass
+
+
+class CaseStateError(ValueError):
+    """The action does not fit the case's current status."""
+
+
+def _now() -> str:
+    return datetime.now(UTC).isoformat()
+
+
+def _cases_root(output_dir: str) -> Path:
+    return Path(output_dir) / CASES_DIR
+
+
+def _case_dir(output_dir: str, case_id: str) -> Path:
+    try:
+        uuid.UUID(case_id)
+    except ValueError as exc:
+        raise CaseNotFoundError(case_id) from exc
+    return _cases_root(output_dir) / case_id
+
+
+def _write(output_dir: str, case: dict[str, Any]) -> dict[str, Any]:
+    path = _case_dir(output_dir, case["id"]) / CASE_FILE
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(case, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, path)
+    return case
+
+
+def _event(case: dict[str, Any], role: str, action: str, detail: str = "") -> None:
+    case["events"].append({"at": _now(), "role": role, "action": action, "detail": detail})
+
+
+def create_case(output_dir: str, *, created_by: str) -> dict[str, Any]:
+    case_id = str(uuid.uuid4())
+    (_case_dir(output_dir, case_id) / INPUTS_DIR).mkdir(parents=True)
+    case = {
+        "id": case_id,
+        "created_at": _now(),
+        "created_by": created_by,
+        "status": "draft",
+        "round": 1,
+        "note": "",
+        "comment": "",
+        "run_id": None,
+        "run_message": None,
+        "result": None,
+        "record": None,
+        "events": [],
+    }
+    return _write(output_dir, case)
+
+
+def get_case(output_dir: str, case_id: str) -> dict[str, Any]:
+    path = _case_dir(output_dir, case_id) / CASE_FILE
+    try:
+        case = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise CaseNotFoundError(case_id) from exc
+    case["inputs"] = list_inputs(output_dir, case_id)
+    return case
+
+
+def list_cases(output_dir: str) -> list[dict[str, Any]]:
+    root = _cases_root(output_dir)
+    if not root.is_dir():
+        return []
+    cases = []
+    for entry in root.iterdir():
+        try:
+            case = get_case(output_dir, entry.name)
+        except CaseNotFoundError:
+            continue
+        cases.append({k: case[k] for k in ("id", "created_at", "status", "round")})
+    return sorted(cases, key=lambda c: c["created_at"], reverse=True)
+
+
+# -- inputs ---------------------------------------------------------------------
+
+
+def inputs_dir(output_dir: str, case_id: str) -> Path:
+    return _case_dir(output_dir, case_id) / INPUTS_DIR
+
+
+def list_inputs(output_dir: str, case_id: str) -> list[dict[str, Any]]:
+    folder = inputs_dir(output_dir, case_id)
+    if not folder.is_dir():
+        return []
+    return [
+        {"name": p.name, "bytes": p.stat().st_size} for p in sorted(folder.iterdir()) if p.is_file()
+    ]
+
+
+def _require_editable(case: dict[str, Any]) -> None:
+    if case["status"] not in EDITABLE:
+        raise CaseStateError(f"the case is {case['status']}; its input can no longer change")
+
+
+def save_input(output_dir: str, case_id: str, filename: str, data: bytes) -> str:
+    """Store one input file of a case. Same rules as the package's sample input."""
+    _require_editable(get_case(output_dir, case_id))
+    return _save_into(inputs_dir(output_dir, case_id), filename, data)
+
+
+def _save_into(folder: Path, filename: str, data: bytes) -> str:
+    if len(data) > poc_service.MAX_INPUT_BYTES:
+        raise poc_service.InputRejectedError(
+            f"the file is larger than {poc_service.MAX_INPUT_BYTES // (1024 * 1024)} MB"
+        )
+    if not data:
+        raise poc_service.InputRejectedError("the file is empty")
+    name = poc_service.safe_input_name(filename)
+    folder.mkdir(parents=True, exist_ok=True)
+    target = (folder / name).resolve()
+    if target.parent != folder.resolve():
+        raise poc_service.InputRejectedError(f"'{filename}' resolves outside the input directory")
+    target.write_bytes(data)
+    return name
+
+
+def input_path(output_dir: str, case_id: str, filename: str) -> Path | None:
+    name = poc_service.safe_input_name(filename)
+    path = inputs_dir(output_dir, case_id) / name
+    return path if path.is_file() else None
+
+
+def delete_input(output_dir: str, case_id: str, filename: str) -> bool:
+    _require_editable(get_case(output_dir, case_id))
+    path = input_path(output_dir, case_id, filename)
+    if path is None:
+        return False
+    path.unlink()
+    return True
+
+
+# -- the workflow ----------------------------------------------------------------
+
+
+def mark_submitted(
+    output_dir: str, case_id: str, *, run_id: str, role: str, note: str
+) -> dict[str, Any]:
+    case = get_case(output_dir, case_id)
+    _require_editable(case)
+    if not case["inputs"]:
+        raise CaseStateError("add the input before submitting the case")
+    case.update(status="running", run_id=run_id, run_message=None, note=note.strip())
+    _event(case, role, "submit", case["note"])
+    return _write(output_dir, case)
+
+
+def require_submittable(output_dir: str, case_id: str) -> dict[str, Any]:
+    case = get_case(output_dir, case_id)
+    _require_editable(case)
+    if not case["inputs"]:
+        raise CaseStateError("add the input before submitting the case")
+    return case
+
+
+def finish_run(
+    output_dir: str,
+    case_id: str,
+    *,
+    phase: str,
+    log: str | None,
+    message: str | None,
+    spec: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Settle a running case from its run: the result for review, or why it failed."""
+    case = get_case(output_dir, case_id)
+    if case["status"] != "running":
+        return case
+    result = parse_run_output(log or "", spec) if phase == "succeeded" else None
+    if result and result.get("record") is not None:
+        case.update(status="review", result=result, record=result["record"], run_message=None)
+        _event(case, "ai", "result")
+    else:
+        reason = message or (
+            "the run finished but wrote no result matching the output fields"
+            if phase == "succeeded"
+            else f"the run ended: {phase}"
+        )
+        case.update(status="failed", run_message=reason)
+        _event(case, "ai", "failed", reason)
+    return _write(output_dir, case)
+
+
+def review(
+    output_dir: str,
+    case_id: str,
+    *,
+    action: str,
+    role: str,
+    record: dict[str, Any] | None,
+    comment: str,
+    spec: dict[str, Any] | None,
+) -> dict[str, Any]:
+    case = get_case(output_dir, case_id)
+    if case["status"] != "review":
+        raise CaseStateError(f"the case is {case['status']}, not waiting for review")
+    comment = comment.strip()
+    if action == "approve":
+        record = record if record is not None else case["record"]
+        problems = record_problems(record, spec)
+        if problems:
+            raise CaseStateError("; ".join(problems))
+        case.update(status="approved", record=record)
+        _event(case, role, "approve", _changes(case["result"]["record"], record))
+    elif action == "return":
+        if not comment:
+            raise CaseStateError("say what needs correcting")
+        case.update(status="returned", comment=comment, round=case["round"] + 1)
+        _event(case, role, "return", comment)
+    elif action == "reject":
+        if not comment:
+            raise CaseStateError("say why the case is rejected")
+        case.update(status="rejected", comment=comment)
+        _event(case, role, "reject", comment)
+    else:
+        raise CaseStateError(f"unknown action {action!r}")
+    return _write(output_dir, case)
+
+
+def _changes(before: dict[str, Any], after: dict[str, Any]) -> str:
+    changed = [k for k in after if str(after.get(k)) != str(before.get(k))]
+    return ", ".join(changed)
+
+
+_FORMATS = {
+    "DD/MM/YYYY": r"(0[1-9]|[12]\d|3[01])/(0[1-9]|1[0-2])/\d{4}",
+    "YYYY-MM-DD": r"\d{4}-\d{2}-\d{2}",
+    "HH:MM": r"([01]\d|2[0-3]):[0-5]\d",
+}
+
+
+def record_problems(record: Any, spec: dict[str, Any] | None) -> list[str]:
+    """What stops a reviewed record from being approved: the same checks the form makes."""
+    if not isinstance(record, dict):
+        return ["the record is not an object"]
+    if not spec:
+        return []
+    problems = []
+    descriptions = spec.get("field_descriptions") or {}
+    allowed = spec.get("allowed_values") or {}
+    for field in spec.get("fields") or []:
+        value = record.get(field)
+        empty = value is None or (isinstance(value, str) and not value.strip()) or value == []
+        if field in (spec.get("required_fields") or []) and empty:
+            problems.append(f"{field} is required")
+            continue
+        if empty or not isinstance(value, str):
+            continue
+        if field in allowed and value not in allowed[field]:
+            problems.append(f"{field} must be one of {', '.join(allowed[field])}")
+        for token, pattern in _FORMATS.items():
+            if token in (descriptions.get(field) or "") and not re.fullmatch(pattern, value):
+                problems.append(f"{field} must be {token}")
+    return problems
+
+
+# -- reading a run's result ------------------------------------------------------
+
+
+def parse_run_output(log: str, spec: dict[str, Any] | None) -> dict[str, Any]:
+    """The files the run printed between the output markers, and which is which.
+
+    The run container prints each top-level json/txt/md file of ``output/``
+    between two markers (sandbox-job.yaml). The record is the JSON whose keys
+    are the output fields; a JSON with ``passed`` is the grounding check; a
+    ``*transcript*.txt`` is the transcript.
+    """
+    begin, end = log.find(OUTPUT_BEGIN), log.find(OUTPUT_END)
+    if begin < 0:
+        return {"record": None, "validation": None, "transcript": "", "files": {}}
+    block = log[begin + len(OUTPUT_BEGIN) : end if end > begin else len(log)]
+    files = dict(re.findall(r"--- output/([^\n]+?) ---\n(.*?)(?=\n--- output/|\Z)", block, re.S))
+    fields = set((spec or {}).get("fields") or [])
+    record = validation = None
+    transcript = ""
+    for name, body in files.items():
+        body = body.strip()
+        if name.endswith(".json"):
+            try:
+                data = json.loads(body)
+            except ValueError:
+                continue
+            first = data[0] if isinstance(data, list) and data else data
+            if not isinstance(first, dict):
+                continue
+            if record is None and fields and fields & set(first):
+                record = first
+            elif validation is None and "passed" in first:
+                validation = first
+        elif "transcript" in name and name.endswith(".txt"):
+            transcript = body
+    return {
+        "record": record,
+        "validation": validation,
+        "transcript": transcript,
+        "files": sorted(files),
+    }
+
+
+# -- the process the UI is built from -------------------------------------------
+
+_BPMN = "{http://www.omg.org/spec/BPMN/20100524/MODEL}"
+_KINDS = (
+    "userTask",
+    "manualTask",
+    "serviceTask",
+    "sendTask",
+    "scriptTask",
+    "task",
+    "startEvent",
+    "endEvent",
+    "exclusiveGateway",
+    "parallelGateway",
+)
+
+
+def process_from_bpmn(xml: str) -> dict[str, Any]:
+    """Lanes, nodes and sequence flows of the BPMN, in the shape the case UI reads.
+
+    A lane holding a user or manual task is a role; one holding only service
+    tasks is the system. Data objects a task writes or reads are kept by name,
+    so the input screen knows what to ask for.
+    """
+    root = ET.fromstring(xml)
+    proc = root.find(f"{_BPMN}process")
+    if proc is None:
+        return {"lanes": [], "nodes": [], "flows": []}
+    data_names = {d.get("id"): d.get("name") for d in proc.iter(f"{_BPMN}dataObjectReference")}
+    nodes: dict[str, dict[str, Any]] = {}
+    for kind in _KINDS:
+        for el in proc.iter(f"{_BPMN}{kind}"):
+            nodes[el.get("id")] = {
+                "id": el.get("id"),
+                "kind": kind,
+                # "[A2S] Transcribe …": the component code is for the diagram reader.
+                "name": re.sub(r"^\[[A-Z0-9]+\]\s*", "", el.get("name") or ""),
+                "lane": None,
+                "inputs": [
+                    data_names.get(a.findtext(f"{_BPMN}sourceRef"))
+                    for a in el.iter(f"{_BPMN}dataInputAssociation")
+                ],
+                "outputs": [
+                    data_names.get(a.findtext(f"{_BPMN}targetRef"))
+                    for a in el.iter(f"{_BPMN}dataOutputAssociation")
+                ],
+            }
+    lanes = []
+    for lane in proc.iter(f"{_BPMN}lane"):
+        refs = [r.text for r in lane.iter(f"{_BPMN}flowNodeRef")]
+        for ref in refs:
+            if ref in nodes:
+                nodes[ref]["lane"] = lane.get("id")
+        human = any(nodes.get(r, {}).get("kind") in ("userTask", "manualTask") for r in refs)
+        lanes.append({"id": lane.get("id"), "name": lane.get("name") or "", "human": human})
+    flows = [
+        {"from": f.get("sourceRef"), "to": f.get("targetRef"), "name": f.get("name") or ""}
+        for f in proc.iter(f"{_BPMN}sequenceFlow")
+    ]
+    return {"lanes": lanes, "nodes": list(nodes.values()), "flows": flows}
