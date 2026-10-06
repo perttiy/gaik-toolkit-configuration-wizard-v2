@@ -525,9 +525,13 @@ class SandboxRunner:
         pod = self._run_pod(run_id)
         if pod is None:
             raise RunNotFoundError(run_id)
-        return self._core.read_namespaced_pod_log(
-            name=pod, namespace=self.namespace, container=RUN_CONTAINER
+        # Unpreloaded: the client's own decoding returns the log as the repr of
+        # a string (newlines as "\\n"), and the output files could not be found.
+        response = self._core.read_namespaced_pod_log(
+            name=pod, namespace=self.namespace, container=RUN_CONTAINER, _preload_content=False
         )
+        data = getattr(response, "data", response)
+        return data.decode("utf-8", errors="replace") if isinstance(data, bytes) else str(data)
 
     def delete_run(self, run_id: str) -> None:
         """Remove a Job early. Finished Jobs reap themselves via ttlSecondsAfterFinished."""

@@ -379,12 +379,17 @@ def test_the_whole_log_of_a_finished_run_is_read_from_its_pod():
 
         def read_namespaced_pod_log(self, **kwargs):
             self.kwargs = kwargs
-            return _log()
+            return SimpleNamespace(data=_log().encode())
 
     core = Core()
     runner = SandboxRunner(namespace="ns", image=IMAGE, batch=object(), core=core)
 
-    assert "POC OUTPUT BEGIN" in runner.read_log("run-1")
+    log = runner.read_log("run-1")
+
+    assert "POC OUTPUT BEGIN" in log
+    assert case_service.parse_run_output(log, SPEC)["record"] == RECORD
+    # The client's own decoding escaped the newlines, so the raw body is read.
+    assert core.kwargs["_preload_content"] is False
     assert "follow" not in core.kwargs
 
 
