@@ -58,7 +58,11 @@ export type Case = {
   run_id: string | null;
   run_phase?: string;
   run_message: string | null;
-  inputs: { name: string; bytes: number }[];
+  inputs: { name: string; bytes: number; task?: string | null }[];
+  steps_done?: string[];
+  input_tasks?: Record<string, string>;
+  notes?: Record<string, string>;
+  return_to?: string | null;
   result: {
     record: CaseRecord | CaseRecord[] | null;
     validation: { passed?: boolean } | null;
@@ -95,8 +99,12 @@ export function shapeProcess(process: Process) {
     const next = out(id);
     id = (next.find((f) => YES.test(f.name)) ?? next[0])?.to;
   }
-  const inputTask = steps.find(isHumanTask);
-  const reviewTask = steps.find((n) => isHumanTask(n) && n !== inputTask);
+  // Everyone before the first AI step gives a part of the input, in order;
+  // the first person after an AI step reviews.
+  const firstAi = steps.findIndex((n) => !isHumanTask(n));
+  const inputTasks = (firstAi < 0 ? steps : steps.slice(0, firstAi)).filter(isHumanTask);
+  const inputTask = inputTasks[0];
+  const reviewTask = firstAi < 0 ? undefined : steps.slice(firstAi).find(isHumanTask);
   const gateway = reviewTask
     ? byId.get(out(reviewTask.id)[0]?.to ?? "")
     : undefined;
@@ -109,30 +117,46 @@ export function shapeProcess(process: Process) {
       .some((f) => byId.get(f.to)?.kind !== "endEvent");
   const roles = process.lanes.filter((l) => l.human);
   const aiSteps = steps.filter((n) => !isHumanTask(n));
-  return { steps, inputTask, reviewTask, roles, aiSteps, returnInDiagram, byId };
+  return { steps, inputTask, inputTasks, reviewTask, roles, aiSteps, returnInDiagram, byId };
 }
 
 export type ShapedProcess = ReturnType<typeof shapeProcess>;
 
-/** The task a case is waiting on, from its status. */
-export function currentTask(shaped: ShapedProcess, status: CaseStatus): ProcessNode | undefined {
-  if (status === "draft" || status === "returned" || status === "failed") return shaped.inputTask;
+const isInputStatus = (status: CaseStatus) =>
+  status === "draft" || status === "returned" || status === "failed";
+
+/** The task a case is waiting on: the first input step not done yet, or the review. */
+export function currentTask(
+  shaped: ShapedProcess,
+  status: CaseStatus,
+  stepsDone: string[] = [],
+): ProcessNode | undefined {
+  if (isInputStatus(status)) {
+    return shaped.inputTasks.find((n) => !stepsDone.includes(n.id)) ?? shaped.inputTasks.at(-1);
+  }
   if (status === "review") return shaped.reviewTask;
   return undefined;
 }
+
+/** Whether the task is the last input step, the one that sends the case to the AI. */
+export const isLastInput = (shaped: ShapedProcess, node?: ProcessNode) =>
+  !!node && shaped.inputTasks.at(-1)?.id === node.id;
 
 /** Which steps are done, for the stepper. */
 export function stepState(
   shaped: ShapedProcess,
   status: CaseStatus,
   node: ProcessNode,
+  stepsDone: string[] = [],
 ): "done" | "current" | "todo" {
   const order = shaped.steps.indexOf(node);
-  const inputAt = shaped.steps.indexOf(shaped.inputTask as ProcessNode);
+  const inputAt = shaped.steps.indexOf(shaped.inputTasks.at(-1) as ProcessNode);
   const reviewAt = shaped.steps.indexOf(shaped.reviewTask as ProcessNode);
   if (status === "approved" || status === "completed") return "done";
-  if (status === "draft" || status === "returned" || status === "failed")
-    return order === inputAt ? "current" : "todo";
+  if (isInputStatus(status)) {
+    if (stepsDone.includes(node.id)) return "done";
+    return node === currentTask(shaped, status, stepsDone) ? "current" : "todo";
+  }
   if (status === "running")
     return order <= inputAt ? "done" : order < reviewAt ? "current" : "todo";
   if (status === "review")

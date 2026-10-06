@@ -27,6 +27,7 @@ export type AuditEvent =
   | "case.input.upload"
   | "case.input.delete"
   | "case.submit"
+  | "case.step"
   | "case.review";
 
 export type AuditFields = {

@@ -76,7 +76,9 @@ def _case_dir(output_dir: str, case_id: str) -> Path:
 def _write(output_dir: str, case: dict[str, Any]) -> dict[str, Any]:
     path = _case_dir(output_dir, case["id"]) / CASE_FILE
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(case, ensure_ascii=False, indent=2), encoding="utf-8")
+    # The input listing is read from disk each time, so it is not stored.
+    stored = {k: v for k, v in case.items() if k != "inputs"}
+    tmp.write_text(json.dumps(stored, ensure_ascii=False, indent=2), encoding="utf-8")
     os.replace(tmp, path)
     return case
 
@@ -101,6 +103,13 @@ def create_case(output_dir: str, *, created_by: str) -> dict[str, Any]:
         "result": None,
         "record": None,
         "events": [],
+        # Several people may give parts of the input, each in their own user
+        # task: which tasks are done, which task each file came from, what
+        # each one wrote, and where a returned case goes back to.
+        "steps_done": [],
+        "input_tasks": {},
+        "notes": {},
+        "return_to": None,
     }
     return _write(output_dir, case)
 
@@ -111,7 +120,16 @@ def get_case(output_dir: str, case_id: str) -> dict[str, Any]:
         case = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise CaseNotFoundError(case_id) from exc
-    case["inputs"] = list_inputs(output_dir, case_id)
+    for key, default in (
+        ("steps_done", []),
+        ("input_tasks", {}),
+        ("notes", {}),
+        ("return_to", None),
+    ):
+        case.setdefault(key, default)
+    case["inputs"] = [
+        {**f, "task": case["input_tasks"].get(f["name"])} for f in list_inputs(output_dir, case_id)
+    ]
     return case
 
 
@@ -150,10 +168,20 @@ def _require_editable(case: dict[str, Any]) -> None:
         raise CaseStateError(f"the case is {case['status']}; its input can no longer change")
 
 
-def save_input(output_dir: str, case_id: str, filename: str, data: bytes) -> str:
-    """Store one input file of a case. Same rules as the package's sample input."""
-    _require_editable(get_case(output_dir, case_id))
-    return _save_into(inputs_dir(output_dir, case_id), filename, data)
+def save_input(
+    output_dir: str, case_id: str, filename: str, data: bytes, *, task: str | None = None
+) -> str:
+    """Store one input file of a case. Same rules as the package's sample input.
+
+    ``task`` is the user task (BPMN id) whose person gave the file.
+    """
+    case = get_case(output_dir, case_id)
+    _require_editable(case)
+    name = _save_into(inputs_dir(output_dir, case_id), filename, data)
+    if task:
+        case["input_tasks"][name] = task[:200]
+        _write(output_dir, case)
+    return name
 
 
 def _save_into(folder: Path, filename: str, data: bytes) -> str:
@@ -184,20 +212,51 @@ def delete_input(output_dir: str, case_id: str, filename: str) -> bool:
     if path is None:
         return False
     path.unlink()
+    case = get_case(output_dir, case_id)
+    if case["input_tasks"].pop(path.name, None) is not None:
+        _write(output_dir, case)
     return True
 
 
 # -- the workflow ----------------------------------------------------------------
 
 
+def complete_step(
+    output_dir: str, case_id: str, *, task: str, role: str, note: str
+) -> dict[str, Any]:
+    """One person's part of the input is done; the case waits for the next one."""
+    case = get_case(output_dir, case_id)
+    _require_editable(case)
+    task = task.strip()[:200]
+    if not task:
+        raise CaseStateError("name the task that is done")
+    if not any(f.get("task") == task for f in case["inputs"]):
+        raise CaseStateError("add this step's input before marking it done")
+    if task not in case["steps_done"]:
+        case["steps_done"].append(task)
+    case["notes"][task] = note.strip()
+    _event(case, role, "step", note.strip())
+    return _write(output_dir, case)
+
+
 def mark_submitted(
-    output_dir: str, case_id: str, *, run_id: str, role: str, note: str
+    output_dir: str,
+    case_id: str,
+    *,
+    run_id: str,
+    role: str,
+    note: str,
+    task: str | None = None,
 ) -> dict[str, Any]:
     case = get_case(output_dir, case_id)
     _require_editable(case)
     if not case["inputs"]:
         raise CaseStateError("add the input before submitting the case")
     case.update(status="running", run_id=run_id, run_message=None, note=note.strip())
+    if task:
+        if task not in case["steps_done"]:
+            case["steps_done"].append(task)
+        case["notes"][task] = note.strip()
     _event(case, role, "submit", case["note"])
     return _write(output_dir, case)
 
@@ -257,6 +316,7 @@ def review(
     record: dict[str, Any] | list[dict[str, Any]] | None,
     comment: str,
     spec: dict[str, Any] | None,
+    return_to: str | None = None,
 ) -> dict[str, Any]:
     case = get_case(output_dir, case_id)
     if case["status"] != "review":
@@ -273,7 +333,16 @@ def review(
     elif action == "return":
         if not comment:
             raise CaseStateError("say what needs correcting")
-        case.update(status="returned", comment=comment, round=case["round"] + 1)
+        # Back to the step named, or to the first; the steps after it are redone.
+        done = case["steps_done"]
+        keep = done[: done.index(return_to)] if return_to in done else []
+        case.update(
+            status="returned",
+            comment=comment,
+            round=case["round"] + 1,
+            return_to=return_to,
+            steps_done=keep,
+        )
         _event(case, role, "return", comment)
     elif action == "reject":
         if not comment:

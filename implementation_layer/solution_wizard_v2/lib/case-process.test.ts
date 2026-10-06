@@ -7,6 +7,7 @@ import {
   formFields,
   isAudioInput,
   isDocument,
+  isLastInput,
   isTable,
   parseInput,
   problemCount,
@@ -186,5 +187,59 @@ describe("table columns named in the spec", () => {
       { table: "line_items", row: 2, column: "form", problem: { kind: "allowed", detail: "Flat, Round" } },
     ]);
     expect(problemCount(spec, record)).toBe(1);
+  });
+});
+
+describe("several people giving the input", () => {
+  // Procurement uploads the figures, quality the audit, then the AI, then the review.
+  const multi: Process = {
+    lanes: [
+      { id: "L_p", name: "Procurement", human: true },
+      { id: "L_q", name: "Quality", human: true },
+      { id: "L_ai", name: "GenAI", human: false },
+      { id: "L_r", name: "Manager", human: true },
+    ],
+    nodes: [
+      { id: "S", kind: "startEvent", name: "", lane: "L_p", inputs: [], outputs: [] },
+      { id: "T_kpi", kind: "userTask", name: "Upload KPIs", lane: "L_p", inputs: [], outputs: ["KPI workbook"] },
+      { id: "T_aud", kind: "userTask", name: "Upload audit", lane: "L_q", inputs: [], outputs: ["Audit report"] },
+      { id: "T_ai", kind: "serviceTask", name: "Write report", lane: "L_ai", inputs: [], outputs: [] },
+      { id: "T_rev", kind: "userTask", name: "Approve report", lane: "L_r", inputs: [], outputs: [] },
+      { id: "E", kind: "endEvent", name: "", lane: "L_r", inputs: [], outputs: [] },
+    ],
+    flows: [
+      { from: "S", to: "T_kpi", name: "" },
+      { from: "T_kpi", to: "T_aud", name: "" },
+      { from: "T_aud", to: "T_ai", name: "" },
+      { from: "T_ai", to: "T_rev", name: "" },
+      { from: "T_rev", to: "E", name: "" },
+    ],
+  };
+  const shaped = shapeProcess(multi);
+
+  it("gives every user task before the AI its own input step, and the next one reviews", () => {
+    expect(shaped.inputTasks.map((n) => n.id)).toEqual(["T_kpi", "T_aud"]);
+    expect(shaped.reviewTask?.id).toBe("T_rev");
+    expect(shaped.roles.map((l) => l.name)).toEqual(["Procurement", "Quality", "Manager"]);
+  });
+
+  it("moves the case to the next person when a step is done", () => {
+    expect(currentTask(shaped, "draft", [])?.id).toBe("T_kpi");
+    expect(currentTask(shaped, "draft", ["T_kpi"])?.id).toBe("T_aud");
+    expect(isLastInput(shaped, shaped.inputTasks[0])).toBe(false);
+    expect(isLastInput(shaped, shaped.inputTasks[1])).toBe(true);
+  });
+
+  it("shows the finished step done and the next one current", () => {
+    expect(shaped.steps.map((n) => stepState(shaped, "draft", n, ["T_kpi"]))).toEqual([
+      "done",
+      "current",
+      "todo",
+      "todo",
+    ]);
+  });
+
+  it("sends a returned case back to the step the reviewer named", () => {
+    expect(currentTask(shaped, "returned", ["T_kpi"])?.id).toBe("T_aud");
   });
 });

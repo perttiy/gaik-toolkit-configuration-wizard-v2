@@ -9,6 +9,7 @@ import {
   type OutputSpec,
   type ProcessNode,
   currentTask,
+  isLastInput,
   fieldProblem,
   formFields,
   formatOf,
@@ -102,12 +103,15 @@ export function CaseWorkflow({ sessionId, strings: s, dateLocale }: Props) {
   }, [current?.status, current?.id, loadCase]);
 
   // When the case moves to another role's task, follow it.
-  const task = shaped && current ? currentTask(shaped, current.status) : undefined;
+  const task = shaped && current ? currentTask(shaped, current.status, current.steps_done) : undefined;
+  // Keyed on the task, not only the status: one person's input step done moves
+  // the case to the next person while it stays a draft.
   const prevStatus = useRef<string | null>(null);
   useEffect(() => {
-    if (!current || prevStatus.current === current.status) return;
+    const key = current ? `${current.status}:${task?.id ?? ""}` : null;
+    if (!current || prevStatus.current === key) return;
     if (prevStatus.current !== null && task?.lane) setRole(task.lane);
-    prevStatus.current = current.status;
+    prevStatus.current = key;
     void loadCases();
   }, [current, task, loadCases]);
 
@@ -238,7 +242,7 @@ type ViewProps = {
 
 function CaseView(p: ViewProps) {
   const { caseData: c, shaped, s, role } = p;
-  const task = currentTask(shaped, c.status);
+  const task = currentTask(shaped, c.status, c.steps_done);
   const mine = task && task.lane === role;
 
   return (
@@ -270,7 +274,7 @@ function CaseView(p: ViewProps) {
 
       <ol className="flex gap-0 overflow-x-auto pb-1" aria-label="steps">
         {shaped.steps.map((n) => {
-          const st = stepState(shaped, c.status, n);
+          const st = stepState(shaped, c.status, n, c.steps_done);
           return (
             <li
               key={n.id}
@@ -308,8 +312,8 @@ function CaseView(p: ViewProps) {
                 </p>
               )}
             </div>
-          ) : task === shaped.inputTask ? (
-            <InputView {...p} task={task} />
+          ) : shaped.inputTasks.includes(task as ProcessNode) ? (
+            <InputView key={task?.id} {...p} task={task as ProcessNode} />
           ) : (
             <ReviewView {...p} />
           )}
@@ -322,7 +326,13 @@ function CaseView(p: ViewProps) {
 
 function InputView(p: ViewProps & { task: ProcessNode }) {
   const { caseData: c, s, base } = p;
-  const [note, setNote] = useState(c.note ?? "");
+  const [note, setNote] = useState(c.notes?.[p.task.id] ?? "");
+  const first = p.shaped.inputTasks[0];
+  // A file belongs to the step that uploaded it; untagged files to the first step.
+  const mine = c.inputs.filter((f) => (f.task ?? first?.id) === p.task.id);
+  const last = isLastInput(p.shaped, p.task);
+  const earlier = p.shaped.inputTasks.filter((n) => n !== p.task && (c.steps_done ?? []).includes(n.id));
+  const returnedHere = c.status === "returned" && (c.return_to ?? first?.id) === p.task.id;
   const [uploading, setUploading] = useState(false);
   const [recorder, setRecorder] = useState<MediaRecorder | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -333,6 +343,7 @@ function InputView(p: ViewProps & { task: ProcessNode }) {
     for (const f of files) {
       const form = new FormData();
       form.append("file", f, f.name);
+      form.append("task", p.task.id);
       await p.act(() => fetch(`${base}/inputs`, { method: "POST", body: form }));
     }
     setUploading(false);
@@ -363,8 +374,21 @@ function InputView(p: ViewProps & { task: ProcessNode }) {
   return (
     <div className="flex flex-col gap-3" data-testid="case-input">
       <h3 className="font-semibold">{s.yourTask}: {p.task.name}</h3>
-      {c.status === "returned" && (
+      {returnedHere && (
         <p className="rounded-md border-l-4 border-warning-border bg-warning-bg px-3 py-2 text-sm"><b>{s.returned}</b> {c.comment}</p>
+      )}
+      {earlier.length > 0 && (
+        <div className="rounded-md border border-border bg-app px-3 py-2 text-sm" data-testid="case-earlier">
+          <span className="font-semibold">{s.earlierSteps}:</span>
+          <ul className="mt-1 flex flex-col gap-0.5">
+            {earlier.map((n) => (
+              <li key={n.id}>
+                <b>{p.roleName(n.lane)}</b> – {n.name}: {c.inputs.filter((f) => (f.task ?? first?.id) === n.id).map((f) => f.name).join(", ") || "—"}
+                {c.notes?.[n.id] ? ` · “${c.notes[n.id]}”` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       {c.status === "failed" && (
         <p className="rounded-md border-l-4 border-danger-border bg-danger-bg px-3 py-2 text-sm"><b>{s.failed}</b> {c.run_message}</p>
@@ -372,7 +396,7 @@ function InputView(p: ViewProps & { task: ProcessNode }) {
       <div>
         <span className="field-label">{p.task.outputs.filter(Boolean).join(", ") || "Input"} <span className="text-danger-text">*</span></span>
         <ul className="flex flex-col gap-1.5 mb-2" data-testid="case-inputs">
-          {c.inputs.map((f) => (
+          {mine.map((f) => (
             <li key={f.name} className="flex flex-wrap items-center gap-2 text-sm">
               <span className="font-mono text-xs">{f.name}</span>
               <span className="text-text-muted text-xs">{Math.max(1, Math.round(f.bytes / 1024))} kB</span>
@@ -420,16 +444,17 @@ function InputView(p: ViewProps & { task: ProcessNode }) {
           type="button"
           className="btn-brand"
           data-testid="case-submit"
-          disabled={p.busy || uploading || !!recorder || c.inputs.length === 0}
-          title={c.inputs.length === 0 ? s.inputMissing : undefined}
+          disabled={p.busy || uploading || !!recorder || mine.length === 0}
+          title={mine.length === 0 ? s.inputMissing : undefined}
           onClick={async () => {
+            const body = JSON.stringify({ task: p.task.id, role: p.roleName(p.task.lane), note });
             const res = await p.act(() =>
-              fetch(`${base}/submit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role: p.roleName(p.task.lane), note }) }),
+              fetch(`${base}/${last ? "submit" : "step"}`, { method: "POST", headers: { "Content-Type": "application/json" }, body }),
             );
             if (res) await p.reload();
           }}
         >
-          {p.busy ? s.submitting : s.submit}
+          {p.busy ? s.submitting : last ? s.submit : s.stepDone}
         </button>
       </div>
     </div>
@@ -442,6 +467,7 @@ function ReviewView(p: ViewProps) {
   const [rec, setRec] = useState<CaseRecord | CaseRecord[]>(() => structuredClone(c.record ?? original));
   const [ask, setAsk] = useState<null | "return" | "reject">(null);
   const [comment, setComment] = useState("");
+  const [returnTo, setReturnTo] = useState<string>(p.shaped.inputTasks[0]?.id ?? "");
   const doc = isDocument(rec);
   const bad = doc ? docProblems(rec as CaseRecord) : problemCount(model.spec, rec);
   const reviewer = p.roleName(p.shaped.reviewTask?.lane);
@@ -451,7 +477,13 @@ function ReviewView(p: ViewProps) {
       fetch(`${base}/review`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, role: reviewer, comment, record: action === "approve" ? rec : null }),
+        body: JSON.stringify({
+          action,
+          role: reviewer,
+          comment,
+          record: action === "approve" ? rec : null,
+          return_to: action === "return" ? returnTo : null,
+        }),
       }),
     );
     if (res) await p.reload();
@@ -460,11 +492,13 @@ function ReviewView(p: ViewProps) {
   return (
     <div className="flex flex-col gap-3" data-testid="case-review">
       <h3 className="font-semibold">{s.yourTask}: {p.shaped.reviewTask?.name ?? s.reviewTitle}</h3>
-      {c.note && (
-        <p className="rounded-md border-l-4 border-info-border bg-info-bg px-3 py-2 text-sm">
-          {p.roleName(p.shaped.inputTask?.lane)}: “{c.note}”
-        </p>
-      )}
+      {p.shaped.inputTasks
+        .filter((n) => c.notes?.[n.id] || (n === p.shaped.inputTasks.at(-1) && c.note && !c.notes?.[n.id]))
+        .map((n) => (
+          <p key={n.id} className="rounded-md border-l-4 border-info-border bg-info-bg px-3 py-2 text-sm">
+            {p.roleName(n.lane)}: “{c.notes?.[n.id] || c.note}”
+          </p>
+        ))}
       {doc ? (
         <DocumentEditor rec={rec as CaseRecord} original={original as CaseRecord} setRec={setRec} s={s} />
       ) : Array.isArray(rec) ? (
@@ -497,6 +531,16 @@ function ReviewView(p: ViewProps) {
         <div className="rounded-md border border-border-strong p-3 flex flex-col gap-2">
           <label className="field-label" htmlFor="case-comment">{ask === "return" ? s.askReturn : s.askReject}</label>
           <textarea id="case-comment" className="input-field" value={comment} onChange={(e) => setComment(e.target.value)} />
+          {ask === "return" && p.shaped.inputTasks.length > 1 && (
+            <label className="block">
+              <span className="field-label">{s.returnTo}</span>
+              <select className="input-field" value={returnTo} onChange={(e) => setReturnTo(e.target.value)} data-testid="case-return-to">
+                {p.shaped.inputTasks.map((n) => (
+                  <option key={n.id} value={n.id}>{p.roleName(n.lane)} – {n.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
           {ask === "return" && !p.shaped.returnInDiagram && <p className="text-xs text-text-muted">{s.returnNotInDiagram}</p>}
           <div className="flex gap-2">
             <button type="button" className="btn-brand" data-testid="case-confirm" disabled={!comment.trim() || p.busy} onClick={() => send(ask)}>{s.confirm}</button>

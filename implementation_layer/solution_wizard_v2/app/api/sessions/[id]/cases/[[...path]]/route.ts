@@ -21,6 +21,7 @@ const ALLOWED: Record<string, RegExp[]> = {
     /^$/,
     new RegExp(`^${UUID}/inputs$`),
     new RegExp(`^${UUID}/submit$`),
+    new RegExp(`^${UUID}/step$`),
     new RegExp(`^${UUID}/review$`),
   ],
   DELETE: [new RegExp(`^${UUID}/inputs/${FILE}$`)],
@@ -30,6 +31,7 @@ const MAX_INPUT_BYTES = 50 * 1024 * 1024;
 function auditEvent(method: string, subpath: string): AuditEvent {
   if (!subpath) return "case.create";
   if (subpath.includes("/inputs")) return method === "DELETE" ? "case.input.delete" : "case.input.upload";
+  if (subpath.endsWith("/step")) return "case.step";
   return subpath.endsWith("/submit") ? "case.submit" : "case.review";
 }
 
@@ -63,6 +65,8 @@ async function relay(req: NextRequest, { params }: Ctx): Promise<Response> {
       }
       const upstreamForm = new FormData();
       upstreamForm.append("file", file, file.name);
+      const task = form.get("task");
+      if (typeof task === "string" && task) upstreamForm.append("task", task.slice(0, 200));
       init = { method: "POST", body: upstreamForm };
     } else if (req.method === "POST") {
       init = {

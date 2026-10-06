@@ -90,7 +90,9 @@ def test_an_input_is_stored_with_the_case_not_in_the_package(out):
 
     case_service.save_input(out, case["id"], "report.wav", b"RIFF....WAVE")
 
-    assert case_service.get_case(out, case["id"])["inputs"] == [{"name": "report.wav", "bytes": 12}]
+    assert case_service.get_case(out, case["id"])["inputs"] == [
+        {"name": "report.wav", "bytes": 12, "task": None}
+    ]
     assert not os.path.exists(os.path.join(out, "poc", "sample_input"))
 
 
@@ -648,3 +650,64 @@ def test_a_report_spec_whose_fields_are_section_objects_reads_as_names():
 
     assert case_service.normalize_spec(spec)["fields"] == ["executive_summary", "period"]
     assert case_service.parse_run_output(_report_log(), spec)["record"] == REPORT
+
+
+# ---------------------------------------------------------------------------
+# Several people giving parts of the input
+# ---------------------------------------------------------------------------
+
+
+def test_each_person_gives_their_part_and_the_last_one_sends_the_case(out):
+    case = case_service.create_case(out, created_by="u")
+    case_service.save_input(out, case["id"], "kpis.xlsx", b"x", task="T_kpi")
+
+    with pytest.raises(case_service.CaseStateError):
+        case_service.complete_step(out, case["id"], task="T_audit", role="Quality", note="")
+
+    case_service.complete_step(out, case["id"], task="T_kpi", role="Procurement", note="Q2 numbers")
+    case_service.save_input(out, case["id"], "audit.pdf", b"y", task="T_audit")
+    sent = case_service.mark_submitted(
+        out, case["id"], run_id="r1", role="Quality", note="", task="T_audit"
+    )
+
+    assert sent["status"] == "running"
+    assert sent["steps_done"] == ["T_kpi", "T_audit"]
+    assert sent["notes"]["T_kpi"] == "Q2 numbers"
+    assert {f["name"]: f["task"] for f in sent["inputs"]} == {
+        "audit.pdf": "T_audit",
+        "kpis.xlsx": "T_kpi",
+    }
+
+
+def test_a_case_returned_to_a_later_step_keeps_the_earlier_ones_done(out):
+    case = case_service.create_case(out, created_by="u")
+    case_service.save_input(out, case["id"], "kpis.xlsx", b"x", task="T_kpi")
+    case_service.complete_step(out, case["id"], task="T_kpi", role="Procurement", note="")
+    case_service.save_input(out, case["id"], "audit.pdf", b"y", task="T_audit")
+    case_service.mark_submitted(
+        out, case["id"], run_id="r1", role="Quality", note="", task="T_audit"
+    )
+    case_service.finish_run(out, case["id"], phase="succeeded", log=_log(), message=None, spec=SPEC)
+
+    returned = case_service.review(
+        out,
+        case["id"],
+        action="return",
+        role="Reviewer",
+        record=None,
+        comment="Audit is the old one",
+        spec=SPEC,
+        return_to="T_audit",
+    )
+
+    assert returned["steps_done"] == ["T_kpi"]
+    assert returned["return_to"] == "T_audit"
+
+
+def test_a_deleted_input_forgets_whose_it_was(out):
+    case = case_service.create_case(out, created_by="u")
+    case_service.save_input(out, case["id"], "kpis.xlsx", b"x", task="T_kpi")
+
+    case_service.delete_input(out, case["id"], "kpis.xlsx")
+
+    assert case_service.get_case(out, case["id"])["input_tasks"] == {}

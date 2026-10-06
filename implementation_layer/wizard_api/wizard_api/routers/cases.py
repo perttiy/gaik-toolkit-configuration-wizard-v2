@@ -13,7 +13,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -33,13 +33,21 @@ router = APIRouter(
 class SubmitRequest(BaseModel):
     role: str = Field(default="", max_length=200)
     note: str = Field(default="", max_length=2000)
+    task: str | None = Field(default=None, max_length=200)
+
+
+class StepRequest(BaseModel):
+    task: str = Field(min_length=1, max_length=200)
+    role: str = Field(default="", max_length=200)
+    note: str = Field(default="", max_length=2000)
 
 
 class ReviewRequest(BaseModel):
     action: str = Field(pattern="^(approve|return|reject)$")
     role: str = Field(default="", max_length=200)
     comment: str = Field(default="", max_length=2000)
-    record: dict[str, Any] | None = None
+    record: dict[str, Any] | list[dict[str, Any]] | None = None
+    return_to: str | None = Field(default=None, max_length=200)
 
 
 def _session(db: Session, session_id: uuid.UUID):
@@ -193,18 +201,21 @@ async def upload_case_input(
     session_id: uuid.UUID,
     case_id: str,
     file: UploadFile = File(...),
+    task: str | None = Form(default=None),
     db: Session = Depends(get_db),
 ) -> dict:
     session = _session(db, session_id)
     _case(session.output_dir, case_id)
     data = await file.read()
     try:
-        name = case_service.save_input(session.output_dir, case_id, file.filename or "", data)
+        name = case_service.save_input(
+            session.output_dir, case_id, file.filename or "", data, task=task
+        )
     except poc_service.InputRejectedError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except case_service.CaseStateError as exc:
         raise _state_error(exc) from exc
-    return {"name": name, "bytes": len(data)}
+    return {"name": name, "bytes": len(data), "task": task}
 
 
 @router.get("/{session_id}/cases/{case_id}/inputs/{filename}")
@@ -269,8 +280,28 @@ def submit_case(
     except sandbox_runner.SandboxNotConfiguredError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return case_service.mark_submitted(
-        session.output_dir, case_id, run_id=run_id, role=payload.role, note=payload.note
+        session.output_dir,
+        case_id,
+        run_id=run_id,
+        role=payload.role,
+        note=payload.note,
+        task=payload.task,
     )
+
+
+@router.post("/{session_id}/cases/{case_id}/step")
+def complete_case_step(
+    session_id: uuid.UUID, case_id: str, payload: StepRequest, db: Session = Depends(get_db)
+) -> dict:
+    """One person's part of the input is done; the next input task is up."""
+    session = _session(db, session_id)
+    _case(session.output_dir, case_id)
+    try:
+        return case_service.complete_step(
+            session.output_dir, case_id, task=payload.task, role=payload.role, note=payload.note
+        )
+    except case_service.CaseStateError as exc:
+        raise _state_error(exc) from exc
 
 
 @router.post("/{session_id}/cases/{case_id}/review")
@@ -288,6 +319,7 @@ def review_case(
             record=payload.record,
             comment=payload.comment,
             spec=_spec(db, session),
+            return_to=payload.return_to,
         )
     except case_service.CaseStateError as exc:
         raise _state_error(exc) from exc
