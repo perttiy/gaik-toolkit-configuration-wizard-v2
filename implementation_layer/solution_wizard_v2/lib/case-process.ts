@@ -163,7 +163,10 @@ export type FieldProblem = { kind: "required" | "allowed" | "format"; detail?: s
 
 /** The same checks wizard_api makes before it accepts an approval. */
 export function fieldProblem(spec: OutputSpec, record: CaseRecord, field: string): FieldProblem | null {
-  const value = record[field];
+  return valueProblem(spec, field, record[field]);
+}
+
+function valueProblem(spec: OutputSpec, field: string, value: unknown): FieldProblem | null {
   const empty = value == null || show(value).trim() === "";
   if ((spec.required_fields ?? []).includes(field) && empty) return { kind: "required" };
   if (empty || typeof value !== "string") return null;
@@ -174,14 +177,42 @@ export function fieldProblem(spec: OutputSpec, record: CaseRecord, field: string
   return null;
 }
 
+/** The top-level fields; a dotted field (`line_item.article_code`) is a column of a table field. */
 export const formFields = (spec: OutputSpec) => {
   const unc = uncertainField(spec);
-  return spec.fields.filter((f) => f !== unc);
+  return spec.fields.filter((f) => f !== unc && !f.includes("."));
 };
+
+/** The list field a dotted field belongs to: `line_item.x` → `line_items`. */
+function tableOf(prefix: string, record: CaseRecord): string {
+  return [prefix, `${prefix}s`, `${prefix}es`].find((n) => Array.isArray(record[n])) ?? prefix;
+}
+
+export type RowProblem = { table: string; row: number; column: string; problem: FieldProblem };
+
+/** The columns the spec names (`table.column`), checked on every row of their table. */
+export function rowProblems(spec: OutputSpec, record: CaseRecord): RowProblem[] {
+  const found: RowProblem[] = [];
+  for (const field of spec.fields.filter((f) => f.includes("."))) {
+    const [prefix, column] = [field.slice(0, field.indexOf(".")), field.slice(field.indexOf(".") + 1)];
+    const table = tableOf(prefix, record);
+    const rows = record[table];
+    if (!Array.isArray(rows)) continue;
+    rows.forEach((row, i) => {
+      if (!row || typeof row !== "object") return;
+      const problem = valueProblem(spec, field, (row as CaseRecord)[column]);
+      if (problem) found.push({ table, row: i + 1, column, problem });
+    });
+  }
+  return found;
+}
 
 export function problemCount(spec: OutputSpec, record: CaseRecord | CaseRecord[]): number {
   if (Array.isArray(record)) return record.reduce((n, r) => n + problemCount(spec, r), 0);
-  return formFields(spec).filter((f) => fieldProblem(spec, record, f)).length;
+  return (
+    formFields(spec).filter((f) => fieldProblem(spec, record, f)).length +
+    rowProblems(spec, record).length
+  );
 }
 
 /** A list of objects (participants, decisions…): edited as a table, not as text. */

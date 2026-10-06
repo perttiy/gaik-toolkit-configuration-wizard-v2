@@ -20,6 +20,7 @@ import {
   isTable,
   parseInput,
   problemCount,
+  rowProblems,
   shapeProcess,
   show,
   stepState,
@@ -590,6 +591,14 @@ function RecordForm({ spec, rec, original, setRec, s }: { spec: OutputSpec; rec:
                 <button type="button" className="underline" onClick={() => setRec({ ...rec, [f]: structuredClone(original[f]) })}>{s.restore}</button>
               </p>
             )}
+            {rowProblems(spec, rec)
+              .filter((rp) => rp.table === f)
+              .map((rp) => (
+                <p key={`${rp.row}-${rp.column}`} className="text-xs text-danger-text mt-1">
+                  {humanize(rp.column)} #{rp.row}:{" "}
+                  {rp.problem.kind === "required" ? s.required : rp.problem.kind === "allowed" ? `${s.allowed} ${rp.problem.detail}` : `${s.format} ${rp.problem.detail}`}
+                </p>
+              ))}
             {problem && (
               <p className="text-xs text-danger-text mt-1">
                 {problem.kind === "required" ? s.required : problem.kind === "allowed" ? `${s.allowed} ${problem.detail}` : `${s.format} ${problem.detail}`}

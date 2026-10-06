@@ -10,6 +10,7 @@ import {
   isTable,
   parseInput,
   problemCount,
+  rowProblems,
   shapeProcess,
   stepState,
   tableColumns,
@@ -165,5 +166,25 @@ describe("several records and nested lists", () => {
 
   it("does not take a list of records for a report", () => {
     expect(isDocument([{ sections: [{ text: "x" }] }])).toBe(false);
+  });
+});
+
+describe("table columns named in the spec", () => {
+  const spec: OutputSpec = {
+    fields: ["po_number", "line_items", "line_item.form"],
+    required_fields: ["po_number"],
+    allowed_values: { "line_item.form": ["Flat", "Round"] },
+  };
+  const record = { po_number: "PO-1", line_items: [{ form: "Flat" }, { form: "Square" }] };
+
+  it("keeps a dotted field out of the top-level form", () => {
+    expect(formFields(spec)).toEqual(["po_number", "line_items"]);
+  });
+
+  it("checks the column on every row of its table", () => {
+    expect(rowProblems(spec, record)).toEqual([
+      { table: "line_items", row: 2, column: "form", problem: { kind: "allowed", detail: "Flat, Round" } },
+    ]);
+    expect(problemCount(spec, record)).toBe(1);
   });
 });

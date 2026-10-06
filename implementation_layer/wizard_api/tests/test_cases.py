@@ -620,3 +620,19 @@ def test_an_approved_record_that_carries_its_review_status_says_so(out):
     )
 
     assert approved["record"]["review_status"] == "approved"
+
+
+def test_a_dotted_field_is_a_column_checked_on_every_row():
+    spec = {
+        "fields": ["po_number", "line_items", "line_item.article_code", "line_item.quantity"],
+        "required_fields": ["po_number", "line_items", "line_item.article_code"],
+    }
+    record = {
+        "po_number": "PO-1",
+        "line_items": [
+            {"article_code": "A-1", "quantity": "2"},
+            {"article_code": "", "quantity": "1"},
+        ],
+    }
+
+    assert case_service.record_problems(record, spec) == ["line_item 2: article_code is required"]

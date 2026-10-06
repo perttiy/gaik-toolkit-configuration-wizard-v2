@@ -349,22 +349,47 @@ def record_problems(record: Any, spec: dict[str, Any] | None) -> list[str]:
     if not spec:
         return []
     problems = []
-    descriptions = spec.get("field_descriptions") or {}
-    allowed = spec.get("allowed_values") or {}
     for field in spec.get("fields") or []:
-        value = record.get(field)
-        empty = value is None or (isinstance(value, str) and not value.strip()) or value == []
-        if field in (spec.get("required_fields") or []) and empty:
-            problems.append(f"{field} is required")
+        if "." in field:
+            continue  # a column of a table field, checked per row below
+        problem = _value_problem(spec, field, record.get(field))
+        if problem:
+            problems.append(f"{field} {problem}")
+    for field in spec.get("fields") or []:
+        if "." not in field:
             continue
-        if empty or not isinstance(value, str):
-            continue
-        if field in allowed and value not in allowed[field]:
-            problems.append(f"{field} must be one of {', '.join(allowed[field])}")
-        for token, pattern in _FORMATS.items():
-            if token in (descriptions.get(field) or "") and not re.fullmatch(pattern, value):
-                problems.append(f"{field} must be {token}")
+        table, column = field.split(".", 1)
+        rows = record.get(_table_of(spec, table, record))
+        for i, row in enumerate(rows if isinstance(rows, list) else []):
+            if isinstance(row, dict):
+                problem = _value_problem(spec, field, row.get(column))
+                if problem:
+                    problems.append(f"{table} {i + 1}: {column} {problem}")
     return problems
+
+
+def _table_of(spec: dict[str, Any], prefix: str, record: dict[str, Any]) -> str:
+    """The list field a dotted field belongs to: ``line_item.x`` → ``line_items``."""
+    for name in (prefix, f"{prefix}s", f"{prefix}es"):
+        if isinstance(record.get(name), list):
+            return name
+    return prefix
+
+
+def _value_problem(spec: dict[str, Any], field: str, value: Any) -> str | None:
+    empty = value is None or (isinstance(value, str) and not value.strip()) or value == []
+    if field in (spec.get("required_fields") or []) and empty:
+        return "is required"
+    if empty or not isinstance(value, str):
+        return None
+    allowed = (spec.get("allowed_values") or {}).get(field)
+    if isinstance(allowed, list) and value not in allowed:
+        return f"must be one of {', '.join(allowed)}"
+    description = (spec.get("field_descriptions") or {}).get(field) or ""
+    for token, pattern in _FORMATS.items():
+        if token in description and not re.fullmatch(pattern, value):
+            return f"must be {token}"
+    return None
 
 
 # -- reading a run's result ------------------------------------------------------
