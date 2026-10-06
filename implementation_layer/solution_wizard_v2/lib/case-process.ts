@@ -62,6 +62,7 @@ export type Case = {
     record: CaseRecord | null;
     validation: { passed?: boolean } | null;
     transcript: string;
+    document?: string;
     files: string[];
   } | null;
   record: CaseRecord | null;
@@ -193,8 +194,32 @@ export function parseInput(spec: OutputSpec, field: string, raw: string): unknow
 export function toCsv(record: CaseRecord): string {
   const keys = Object.keys(record);
   const q = (v: unknown) => `"${show(v).replace(/"/g, '""')}"`;
-  return "﻿" + keys.join(",") + "\n" + keys.map((k) => q(record[k])).join(",") + "\n";
+  return "\ufeff" + keys.join(",") + "\n" + keys.map((k) => q(record[k])).join(",") + "\n";
 }
 
 /** Whether an input data object is audio, so the screen offers recording. */
 export const isAudioInput = (name: string | null) => /audio|voice|recording|ääni|puhe/i.test(name ?? "");
+
+// -- a document result (a generated report) --------------------------------------
+
+type Section = { id?: string; title?: string; text?: string };
+
+/** A result made of sections of text (a report) rather than a flat record. */
+export function isDocument(record: CaseRecord | null | undefined): boolean {
+  const sections = record?.sections;
+  return (
+    Array.isArray(sections) &&
+    sections.length > 0 &&
+    sections.every((x) => !!x && typeof x === "object" && "text" in (x as object))
+  );
+}
+
+/** The report as Markdown: title, then each section under its own heading. */
+export function toMarkdown(record: CaseRecord): string {
+  const parts: string[] = [];
+  if (typeof record.title === "string") parts.push(`# ${record.title}`);
+  for (const sec of (record.sections as Section[]) ?? []) {
+    parts.push(`## ${sec.title ?? sec.id ?? ""}`.trimEnd(), String(sec.text ?? "").trim());
+  }
+  return parts.join("\n\n") + "\n";
+}

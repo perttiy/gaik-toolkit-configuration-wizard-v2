@@ -478,3 +478,62 @@ def test_a_case_of_another_session_is_not_found(client, db_session):
 
     assert client.get(f"/sessions/{sid}/cases/{uuid.uuid4()}").status_code == 404
     assert client.get(f"/sessions/{sid}/poc", params={"case": str(uuid.uuid4())}).status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# A document result (a generated report)
+# ---------------------------------------------------------------------------
+
+REPORT = {
+    "status": "DRAFT",
+    "title": "Quarterly report",
+    "sections": [
+        {"id": "summary", "title": "Summary", "text": "Deliveries were on time. [kpis.xlsx]"},
+        {"id": "actions", "title": "Actions", "text": "| Action | Owner |"},
+    ],
+}
+
+
+def _report_log():
+    return "\n".join(
+        [
+            "=== POC OUTPUT BEGIN ===",
+            "--- output/result.json ---",
+            json.dumps(REPORT),
+            "--- output/report_draft.md ---",
+            "# Quarterly report",
+            "=== POC OUTPUT END ===",
+        ]
+    )
+
+
+def test_a_report_made_of_sections_is_the_result_even_without_field_names():
+    result = case_service.parse_run_output(_report_log(), {"fields": ["executive_summary"]})
+
+    assert result["record"] == REPORT
+    assert result["document"] == "# Quarterly report"
+
+
+def test_a_report_is_approved_on_its_sections_not_on_the_field_list(out):
+    spec = {"fields": ["executive_summary"], "required_fields": ["executive_summary"]}
+    case = _running_case(out)
+    case_service.finish_run(
+        out, case["id"], phase="succeeded", log=_report_log(), message=None, spec=spec
+    )
+
+    edited = {
+        **REPORT,
+        "sections": [{**REPORT["sections"][0], "text": "Edited."}, REPORT["sections"][1]],
+    }
+    approved = case_service.review(
+        out, case["id"], action="approve", role="Reviewer", record=edited, comment="", spec=spec
+    )
+
+    assert approved["status"] == "approved"
+    assert approved["record"]["sections"][0]["text"] == "Edited."
+
+
+def test_a_report_with_an_emptied_section_is_not_approved():
+    emptied = {**REPORT, "sections": [{**REPORT["sections"][0], "text": " "}]}
+
+    assert case_service.record_problems(emptied, None) == ["section Summary is empty"]

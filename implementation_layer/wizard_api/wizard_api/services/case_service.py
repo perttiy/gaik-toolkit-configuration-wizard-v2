@@ -276,10 +276,27 @@ _FORMATS = {
 }
 
 
+def is_document(record: Any) -> bool:
+    """A result made of sections of text (a report), rather than a flat record."""
+    sections = record.get("sections") if isinstance(record, dict) else None
+    return (
+        isinstance(sections, list)
+        and bool(sections)
+        and all(isinstance(s, dict) and "text" in s for s in sections)
+    )
+
+
 def record_problems(record: Any, spec: dict[str, Any] | None) -> list[str]:
     """What stops a reviewed record from being approved: the same checks the form makes."""
     if not isinstance(record, dict):
         return ["the record is not an object"]
+    if is_document(record):
+        # A generated document (report sections): reviewed as text, not as fields.
+        return [
+            f"section {s.get('title') or s.get('id') or i + 1} is empty"
+            for i, s in enumerate(record["sections"])
+            if not str(s.get("text") or "").strip()
+        ]
     if not spec:
         return []
     problems = []
@@ -314,12 +331,12 @@ def parse_run_output(log: str, spec: dict[str, Any] | None) -> dict[str, Any]:
     """
     begin, end = log.find(OUTPUT_BEGIN), log.find(OUTPUT_END)
     if begin < 0:
-        return {"record": None, "validation": None, "transcript": "", "files": {}}
+        return {"record": None, "validation": None, "transcript": "", "document": "", "files": []}
     block = log[begin + len(OUTPUT_BEGIN) : end if end > begin else len(log)]
     files = dict(re.findall(r"--- output/([^\n]+?) ---\n(.*?)(?=\n--- output/|\Z)", block, re.S))
     fields = set((spec or {}).get("fields") or [])
     record = validation = None
-    transcript = ""
+    transcript = document = ""
     for name, body in files.items():
         body = body.strip()
         if name.endswith(".json"):
@@ -330,16 +347,19 @@ def parse_run_output(log: str, spec: dict[str, Any] | None) -> dict[str, Any]:
             first = data[0] if isinstance(data, list) and data else data
             if not isinstance(first, dict):
                 continue
-            if record is None and fields and fields & set(first):
+            if record is None and ((fields and fields & set(first)) or is_document(first)):
                 record = first
             elif validation is None and "passed" in first:
                 validation = first
         elif "transcript" in name and name.endswith(".txt"):
             transcript = body
+        elif name.endswith(".md") and not document:
+            document = body
     return {
         "record": record,
         "validation": validation,
         "transcript": transcript,
+        "document": document,
         "files": sorted(files),
     }
 
