@@ -107,3 +107,49 @@ def test_going_back_keeps_the_approval_and_the_way_forward(client) -> None:
     forward = client.patch(f"/sessions/{session_id}", json={"step": 5})
     assert forward.status_code == 200
     assert forward.json()["step"] == 5
+
+
+@requires_postgres
+def test_a_chat_turn_resumes_the_remembered_cli_session_and_tells_about_a_restart(
+    client, monkeypatch
+):
+    """#174: the api hands the stored CLI session id to the agent bridge; when the
+    bridge had to re-bootstrap from the transcript, the chat says so once; the id
+    the bridge reports is remembered for the next process."""
+    import asyncio
+
+    from wizard_api.services import agent_service
+
+    calls: list[dict] = []
+
+    async def fake_get_or_create_session(session_id, output_dir, locale=None, **kwargs):
+        calls.append(kwargs)
+        return {
+            "lock": asyncio.Lock(),
+            "resumed": "transcript",
+            "notice_pending": True,
+            "sdk_session_id": "sdk-new",
+        }
+
+    async def fake_stream_turn_for(agent, message, parts):
+        parts.append("Jatketaan siitä mihin jäimme.")
+        yield agent_service.sse({"delta": "Jatketaan siitä mihin jäimme."})
+
+    monkeypatch.setattr(agent_service, "get_or_create_session", fake_get_or_create_session)
+    monkeypatch.setattr(agent_service, "stream_turn_for", fake_stream_turn_for)
+
+    created = client.post("/sessions", json={"user_id": "resume", "title": "Resume"}).json()
+    sid = created["id"]
+    client.patch(f"/sessions/{sid}", json={"metadata": {"agent_sdk_session_id": "sdk-old"}})
+
+    res = client.post(f"/sessions/{sid}/chat", json={"message": "jatka", "locale": "fi"})
+
+    assert res.status_code == 200
+    assert calls[0]["resume_id"] == "sdk-old"
+    frames = [line[len("data: ") :] for line in res.text.split("\n\n") if line.startswith("data: ")]
+    import json
+
+    assert json.loads(frames[0]) == {"delta": agent_service.RESTART_NOTICE["fi"]}  # first
+    detail = client.get(f"/sessions/{sid}").json()
+    assert detail["metadata"]["agent_sdk_session_id"] == "sdk-new"
+    assert detail["metadata"]["messages"][-1]["content"].startswith("⟳ Wizard käynnistettiin")

@@ -414,9 +414,14 @@ async def chat(
     if session is None:
         raise HTTPException(status_code=404, detail="session not found")
 
+    metadata = dict(session.session_metadata)
     try:
         agent = await agent_service.get_or_create_session(
-            str(session_id), session.output_dir, payload.locale
+            str(session_id),
+            session.output_dir,
+            payload.locale,
+            resume_id=metadata.get("agent_sdk_session_id"),
+            transcript=metadata.get("messages"),
         )
     except agent_service.AgentNotConfiguredError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
@@ -428,8 +433,25 @@ async def chat(
 
     async def gen():
         parts: list[str] = []
+        if agent.get("notice_pending"):
+            # The agent had to be re-bootstrapped from the stored transcript:
+            # say so once, in the chat, instead of silently starting over (#174).
+            agent["notice_pending"] = False
+            lang = (payload.locale or "fi").split("-")[0].lower()
+            notice = agent_service.RESTART_NOTICE.get(lang, agent_service.RESTART_NOTICE["en"])
+            parts.append(notice)
+            yield agent_service.sse({"delta": notice})
         async for frame in agent_service.stream_turn_for(agent, user_message, parts):
             yield frame
+        sdk_id = agent.get("sdk_session_id")
+        if sdk_id and sdk_id != metadata.get("agent_sdk_session_id"):
+            # Remembered so the next process can resume this CLI session.
+            await asyncio.to_thread(
+                session_service.update_session,
+                db,
+                session,
+                SessionUpdate(metadata={"agent_sdk_session_id": sdk_id}),
+            )
         assistant_text = "".join(parts).strip()
         if assistant_text:
             # Persist off the event loop (sync SQLAlchemy commit).

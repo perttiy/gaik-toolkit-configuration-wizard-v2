@@ -73,3 +73,79 @@ def test_chat_raises_when_sdk_unavailable(monkeypatch):
     agent_service.AGENT_SESSIONS.clear()
     with pytest.raises(agent_service.AgentNotConfiguredError):
         asyncio.run(agent_service.get_or_create_session("sid", "/tmp/wizard-x"))
+
+
+# ---------------------------------------------------------------------------
+# The agent's context survives a restart or an idle reap (#174)
+# ---------------------------------------------------------------------------
+
+
+def test_the_cli_state_lives_on_the_sessions_volume(monkeypatch):
+    monkeypatch.delenv("WIZARD_AGENT_STATE_DIR", raising=False)
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
+    monkeypatch.setenv("WIZARD_SESSION_OUTPUT_ROOT", "/data/sessions")
+
+    assert agent_service._agent_env()["CLAUDE_CONFIG_DIR"] == "/data/sessions/.claude-agent"
+
+    monkeypatch.setenv("WIZARD_AGENT_STATE_DIR", "/state/agent")
+    assert agent_service._agent_env()["CLAUDE_CONFIG_DIR"] == "/state/agent"
+
+    # Local dev with the ambient CLI: nothing configured, the CLI keeps its own state.
+    monkeypatch.delenv("WIZARD_AGENT_STATE_DIR", raising=False)
+    monkeypatch.delenv("WIZARD_SESSION_OUTPUT_ROOT", raising=False)
+    assert "CLAUDE_CONFIG_DIR" not in agent_service._agent_env()
+
+
+def test_the_restored_transcript_tells_the_agent_to_continue_not_restart():
+    messages = [{"role": "user", "content": f"message {i}"} for i in range(20)]
+    messages.append({"role": "assistant", "content": "x" * 2000})
+
+    prompt = agent_service.restore_context_prompt(messages)
+
+    assert "CONTEXT RESTORED AFTER A RESTART" in prompt
+    assert "Do NOT restart the interview" in prompt
+    assert "User: message 19" in prompt and "User: message 7" not in prompt  # last 12 only
+    assert "You: " + "x" * 1500 + " …" in prompt  # long replies are cut
+    assert agent_service.restore_context_prompt([]) == ""
+    assert agent_service.restore_context_prompt(None) == ""
+
+
+def test_the_notice_exists_in_both_ui_languages():
+    assert set(agent_service.RESTART_NOTICE) == {"fi", "en"}
+    assert all(text.endswith("\n\n") for text in agent_service.RESTART_NOTICE.values())
+
+
+def test_build_options_pass_the_session_to_resume(tmp_path):
+    pytest.importorskip("claude_agent_sdk")
+    options = agent_service._build_options(tmp_path, tmp_path, resume="sdk-123")
+    assert options.resume == "sdk-123"
+    assert agent_service._build_options(tmp_path, tmp_path).resume is None
+
+
+def test_the_stream_remembers_the_cli_session_id():
+    sdk = pytest.importorskip("claude_agent_sdk")
+
+    class _Client:
+        async def query(self, text):
+            pass
+
+        async def receive_response(self):
+            yield sdk.AssistantMessage(content=[sdk.TextBlock(text="ok")], model="m")
+            yield sdk.ResultMessage(
+                subtype="success",
+                duration_ms=1,
+                duration_api_ms=1,
+                is_error=False,
+                num_turns=1,
+                session_id="sdk-777",
+            )
+
+    session = {"client": _Client(), "id": "t", "last_active": 0}
+    parts: list[str] = []
+
+    async def go():
+        return [f async for f in agent_service._stream_turn(session, parts)]
+
+    asyncio.run(go())
+
+    assert session["sdk_session_id"] == "sdk-777"
