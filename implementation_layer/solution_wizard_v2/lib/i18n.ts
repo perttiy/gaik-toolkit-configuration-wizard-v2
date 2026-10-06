@@ -180,6 +180,9 @@ export type Dict = {
   previous: string;
   nextPhase: string;
   approveGate: string;
+  advancing: string;
+  approving: string;
+  goingBack: string;
   rejectGate: string;
   requestChanges: string;
   changesRequested: string;
@@ -193,6 +196,7 @@ export type Dict = {
   gate1ChecklistTitle: string;
   gate1Answered: string;
   gate1Approve: string;
+  gateApprovedWake: string;
   bcTitle: string;
   bcCurrentProcess: string;
   bcExpectedValue: string;
@@ -407,6 +411,9 @@ const fi: Dict = {
   previous: "← Edellinen",
   nextPhase: "Seuraava vaihe →",
   approveGate: "Hyväksy gate →",
+  advancing: "Siirrytään…",
+  approving: "Hyväksytään…",
+  goingBack: "Palataan…",
   rejectGate: "Hylkää",
   requestChanges: "Pyydä muutoksia",
   changesRequested:
@@ -425,6 +432,7 @@ const fi: Dict = {
   gate1ChecklistTitle: "Kerätyt vaatimukset",
   gate1Answered: "kohtaa vastattu",
   gate1Approve: "Hyväksy vaatimukset & Jatka →",
+  gateApprovedWake: "Gate {n} hyväksytty paneelista, jatka.",
   bcTitle: "Liiketoimintakonteksti",
   bcCurrentProcess: "Nykyprosessi",
   bcExpectedValue: "Odotettu arvo",
@@ -661,6 +669,9 @@ const en: Dict = {
   previous: "← Previous",
   nextPhase: "Next step →",
   approveGate: "Approve gate →",
+  advancing: "Moving on…",
+  approving: "Approving…",
+  goingBack: "Going back…",
   rejectGate: "Reject",
   requestChanges: "Request changes",
   changesRequested:
@@ -679,6 +690,7 @@ const en: Dict = {
   gate1ChecklistTitle: "Gathered requirements",
   gate1Answered: "points answered",
   gate1Approve: "Approve requirements & Continue →",
+  gateApprovedWake: "Gate {n} approved in the panel, continue.",
   bcTitle: "Business context",
   bcCurrentProcess: "Current process",
   bcExpectedValue: "Expected value",

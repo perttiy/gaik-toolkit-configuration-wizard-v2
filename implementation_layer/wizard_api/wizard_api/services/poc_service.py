@@ -18,6 +18,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from wizard_api.services import artifact_sync, blueprint_service
+
 try:
     from solution_wizard.blueprint import Blueprint
     from solution_wizard.scaffolder import scaffold_poc
@@ -26,6 +28,10 @@ try:
     _SOLUTION_WIZARD_AVAILABLE = True
 except ImportError:  # pragma: no cover - optional in minimal installs
     _SOLUTION_WIZARD_AVAILABLE = False
+
+
+class PlaceholderBlueprintError(RuntimeError):
+    """Nothing has been designed yet: the blueprint is still the seed (#181)."""
 
 
 class PocGenerationError(RuntimeError):
@@ -234,6 +240,17 @@ def generate_poc(
             # We scaffolded it, then the agent wired it: the package is now theirs.
             return _agent_package(poc_dir)
 
+    # The seed blueprint is editable scenery, not a design. Without the agent's
+    # draft on disk there is nothing to scaffold from, and the skeleton this used
+    # to write wired nothing and explained nothing (#181).
+    if blueprint_service.is_placeholder(v2_blueprint) and not artifact_sync.has_draft_blueprint(
+        output_dir
+    ):
+        raise PlaceholderBlueprintError(
+            "the blueprint is still the placeholder: nothing has been designed yet, "
+            "so there is nothing to scaffold. Work through the wizard to Gate 2 first."
+        )
+
     try:
         v1 = build_v1_blueprint(
             v2_blueprint,
@@ -425,10 +442,34 @@ def _entrypoint_problems(source: str, poc_dir: str) -> list[str]:
     return problems
 
 
+#: Package folders that hold inputs and results, never the package's own code.
+_NOT_CODE_DIRS = {"sample_input", "output", "__pycache__", ".venv", "venv"}
+
+
 def _is_local_module(poc_dir: str, name: str) -> bool:
-    return os.path.isfile(os.path.join(poc_dir, name + ".py")) or os.path.isdir(
-        os.path.join(poc_dir, name)
-    )
+    """A module the package ships itself: at its root, or one folder down.
+
+    One folder down covers the wizard's own layout: ``schemas/output_schema.py``
+    is imported after ``sys.path.insert(0, .../schemas)``, and a package that did
+    so was refused as importing a module the sandbox lacks (UC03, 6 Oct 2026).
+    """
+
+    def _here(folder: str) -> bool:
+        return os.path.isfile(os.path.join(folder, name + ".py")) or os.path.isdir(
+            os.path.join(folder, name)
+        )
+
+    if _here(poc_dir):
+        return True
+    try:
+        entries = os.scandir(poc_dir)
+    except OSError:
+        return False
+    with entries:
+        return any(
+            entry.is_dir() and entry.name not in _NOT_CODE_DIRS and _here(entry.path)
+            for entry in entries
+        )
 
 
 def _resolvable(module: str) -> bool:

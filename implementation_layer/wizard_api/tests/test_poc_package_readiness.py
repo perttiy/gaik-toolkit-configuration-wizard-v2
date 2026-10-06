@@ -231,6 +231,32 @@ def test_a_guarded_optional_import_and_a_local_module_are_not_flagged(tmp_path):
     assert package_problems(poc) == []
 
 
+def test_a_module_in_a_package_subfolder_is_local(tmp_path):
+    """UC03, 6 Oct 2026: run_poc.py did sys.path.insert(0, .../schemas) and imported
+    output_schema; the package was refused as needing a module the sandbox lacks."""
+    source = WIRED_ENTRYPOINT + "from output_schema import QAResponse\n"
+    poc = _package(tmp_path, entrypoint=source)
+    (Path(poc) / "schemas").mkdir(exist_ok=True)
+    (Path(poc) / "schemas" / "output_schema.py").write_text("QAResponse = dict\n")
+
+    assert package_problems(poc) == []
+
+
+def test_a_file_among_the_inputs_does_not_count_as_package_code(tmp_path):
+    import importlib.util
+
+    if importlib.util.find_spec("gaik") is None:
+        import pytest
+
+        pytest.skip("gaik not installed: the module check is skipped without it")
+    source = WIRED_ENTRYPOINT + "import uploaded_helper\n"
+    poc = _package(tmp_path, entrypoint=source)
+    (Path(poc) / "sample_input").mkdir(exist_ok=True)
+    (Path(poc) / "sample_input" / "uploaded_helper.py").write_text("x = 1\n")
+
+    assert any("uploaded_helper" in p for p in package_problems(poc))
+
+
 def test_requirements_json_that_is_not_json_is_reported(tmp_path):
     poc = _package(tmp_path)
     (Path(poc) / "schemas").mkdir()
