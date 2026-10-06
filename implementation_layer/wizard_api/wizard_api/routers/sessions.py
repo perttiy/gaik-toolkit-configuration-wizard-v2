@@ -29,7 +29,7 @@ from wizard_api.services import (
     blueprint_service,
     session_service,
 )
-from wizard_api.session_state import GateNotApprovedError
+from wizard_api.session_state import GateNotApprovedError, furthest_step_before_pending_gate
 
 # Every /sessions/{session_id}/... route is served only for the session's owner
 # (X-Wizard-User-Id); see wizard_api.ownership for why this sits on the router.
@@ -306,6 +306,8 @@ def generate_poc(
             target_output_spec=spec,
             force=force,
         )
+    except poc_service.PlaceholderBlueprintError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     except poc_service.PocGenerationError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except HTTPException:
@@ -425,10 +427,15 @@ async def chat(
         raise HTTPException(status_code=409, detail="The wizard is still responding.")
 
     user_message = payload.message
+    # The agent gets the UI's gate state with every message; the transcript
+    # keeps what the user wrote (#173).
+    agent_message = agent_service.with_gate_context(
+        user_message, session.step, session.gate_statuses
+    )
 
     async def gen():
         parts: list[str] = []
-        async for frame in agent_service.stream_turn_for(agent, user_message, parts):
+        async for frame in agent_service.stream_turn_for(agent, agent_message, parts):
             yield frame
         assistant_text = "".join(parts).strip()
         if assistant_text:
@@ -452,8 +459,8 @@ async def chat(
 
 
 def _sync_artifacts_and_advance(db: Session, session) -> None:
-    """After a chat turn: adopt the agent's draft blueprint, then advance to
-    Gate 1 if gathering has just finished.
+    """After a chat turn: adopt the agent's draft blueprint, then let the step
+    follow the agent as far as the gates allow.
 
     The wizard writes ``use_case.blueprint.json`` at Phase 3 (spec generation),
     right before Gate 1. Its appearance means gathering is complete → advance to
@@ -462,14 +469,31 @@ def _sync_artifacts_and_advance(db: Session, session) -> None:
     makes blueprint, schema and diagram follow the conversation (#141) instead
     of staying on the seed blueprint.
 
-    Best-effort by design: the file is written mid-conversation and a chat turn
-    must not fail because it was missing or half-written.
+    After Gate 1 the step used to stay at 4 for the rest of the conversation
+    (#169). Now the artifacts the agent writes (schema, components, BPMN,
+    package) say which phase it has reached, and the session moves there, but
+    never past a gate the user has not approved: it stops on the gate step and
+    waits. The move happens only when the artifacts show a *new* phase since
+    the last turn, so a user who stepped back to review something is not pushed
+    forward again by every message.
+
+    Best-effort by design: the files are written mid-conversation and a chat
+    turn must not fail because one was missing or half-written.
     """
     draft = artifact_sync.read_draft_blueprint(session.output_dir)
     if draft is not None:
         artifact_sync.sync_blueprint_from_draft(db, session, draft)
-    if session.step < 4 and artifact_sync.has_draft_blueprint(session.output_dir):
-        session_service.update_session(db, session, SessionUpdate(step=4))
+    reached = artifact_sync.step_reached(session.output_dir)
+    if reached is None:
+        return
+    seen = session.session_metadata.get("agent_step")
+    if isinstance(seen, int) and reached <= seen:
+        return
+    target = furthest_step_before_pending_gate(session.step, reached, session.gate_statuses)
+    payload = SessionUpdate(metadata={"agent_step": reached})
+    if target > session.step:
+        payload.step = target
+    session_service.update_session(db, session, payload)
 
 
 @router.post("/{session_id}/versions", response_model=SessionDetailResponse)
