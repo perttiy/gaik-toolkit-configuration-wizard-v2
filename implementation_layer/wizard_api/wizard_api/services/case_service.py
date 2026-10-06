@@ -32,7 +32,17 @@ INPUTS_DIR = "inputs"
 
 #: draft → running → review → approved | rejected, with review → returned →
 #: running for a correction, and running → failed when the run did not finish.
-STATUSES = ("draft", "running", "review", "returned", "approved", "rejected", "failed")
+#: A process with no reviewer goes running → completed.
+STATUSES = (
+    "draft",
+    "running",
+    "review",
+    "returned",
+    "approved",
+    "rejected",
+    "failed",
+    "completed",
+)
 EDITABLE = ("draft", "returned", "failed")
 
 OUTPUT_BEGIN = "=== POC OUTPUT BEGIN ==="
@@ -208,14 +218,24 @@ def finish_run(
     log: str | None,
     message: str | None,
     spec: dict[str, Any] | None,
+    review_needed: bool = True,
 ) -> dict[str, Any]:
-    """Settle a running case from its run: the result for review, or why it failed."""
+    """Settle a running case from its run: the result for review, or why it failed.
+
+    When the process has no review task (the person who asked reads the answer
+    themselves), a result completes the case.
+    """
     case = get_case(output_dir, case_id)
     if case["status"] != "running":
         return case
     result = parse_run_output(log or "", spec) if phase == "succeeded" else None
     if result and result.get("record") is not None:
-        case.update(status="review", result=result, record=result["record"], run_message=None)
+        case.update(
+            status="review" if review_needed else "completed",
+            result=result,
+            record=result["record"],
+            run_message=None,
+        )
         _event(case, "ai", "result")
     else:
         reason = message or (
@@ -234,7 +254,7 @@ def review(
     *,
     action: str,
     role: str,
-    record: dict[str, Any] | None,
+    record: dict[str, Any] | list[dict[str, Any]] | None,
     comment: str,
     spec: dict[str, Any] | None,
 ) -> dict[str, Any]:
@@ -247,6 +267,7 @@ def review(
         problems = record_problems(record, spec)
         if problems:
             raise CaseStateError("; ".join(problems))
+        record = _mark_approved(record, spec)
         case.update(status="approved", record=record)
         _event(case, role, "approve", _changes(case["result"]["record"], record))
     elif action == "return":
@@ -264,8 +285,29 @@ def review(
     return _write(output_dir, case)
 
 
-def _changes(before: dict[str, Any], after: dict[str, Any]) -> str:
-    changed = [k for k in after if str(after.get(k)) != str(before.get(k))]
+def _mark_approved(record: Any, spec: dict[str, Any] | None) -> Any:
+    """A record that carries its own review status says it was approved, when
+    its spec allows that value (a meeting record's ``review_status``)."""
+    allowed = ((spec or {}).get("allowed_values") or {}).get("review_status") or []
+    if isinstance(record, dict) and "review_status" in record and "approved" in allowed:
+        return {**record, "review_status": "approved"}
+    return record
+
+
+def _changes(before: Any, after: Any) -> str:
+    if isinstance(before, list) and isinstance(after, list):
+        return ", ".join(
+            f"#{i + 1}"
+            for i, (a, b) in enumerate(zip(before, after, strict=False))
+            if json.dumps(a, sort_keys=True) != json.dumps(b, sort_keys=True)
+        )
+    if not isinstance(before, dict) or not isinstance(after, dict):
+        return ""
+    changed = [
+        k
+        for k in after
+        if json.dumps(after.get(k), sort_keys=True) != json.dumps(before.get(k), sort_keys=True)
+    ]
     return ", ".join(changed)
 
 
@@ -288,6 +330,13 @@ def is_document(record: Any) -> bool:
 
 def record_problems(record: Any, spec: dict[str, Any] | None) -> list[str]:
     """What stops a reviewed record from being approved: the same checks the form makes."""
+    if isinstance(record, list):
+        # One record per item (answers to several questions): each is checked.
+        return [
+            f"#{i + 1}: {problem}"
+            for i, item in enumerate(record)
+            for problem in record_problems(item, spec)
+        ]
     if not isinstance(record, dict):
         return ["the record is not an object"]
     if is_document(record):
@@ -348,7 +397,9 @@ def parse_run_output(log: str, spec: dict[str, Any] | None) -> dict[str, Any]:
             if not isinstance(first, dict):
                 continue
             if record is None and ((fields and fields & set(first)) or is_document(first)):
-                record = first
+                # Several records (one per question) stay a list; one is the record.
+                many = isinstance(data, list) and len(data) > 1
+                record = data if many and all(isinstance(d, dict) for d in data) else first
             elif validation is None and "passed" in first:
                 validation = first
         elif "transcript" in name and name.endswith(".txt"):

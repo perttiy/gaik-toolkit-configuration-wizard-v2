@@ -7,10 +7,12 @@ import {
   formFields,
   isAudioInput,
   isDocument,
+  isTable,
   parseInput,
   problemCount,
   shapeProcess,
   stepState,
+  tableColumns,
   toCsv,
   toMarkdown,
 } from "@/lib/case-process";
@@ -140,5 +142,28 @@ describe("a report as the result", () => {
     expect(toMarkdown(report)).toBe(
       "# Quarterly report\n\n## Summary\n\nAll good. [kpis.xlsx]\n\n## Actions\n\n| Action | Owner |\n",
     );
+  });
+});
+
+describe("several records and nested lists", () => {
+  it("counts the problems of every record in a list", () => {
+    const rows = [{ location: "A", urgency: "high" }, { location: "", urgency: "low" }];
+    expect(problemCount(SPEC, rows)).toBe(1);
+  });
+
+  it("writes one CSV row per record, with every column any record has", () => {
+    const csv = toCsv([{ a: "1" }, { a: "2", b: [{ x: 1 }] }]);
+    expect(csv.split("\n").slice(0, 3)).toEqual(["\ufeffa,b", '"1",""', '"2","[{""x"":1}]"']);
+  });
+
+  it("treats a list of objects as a table and finds its columns", () => {
+    const rows = [{ name: "A", role: "PM" }, { name: "B", due: "1.1." }];
+    expect(isTable(rows)).toBe(true);
+    expect(isTable(["a", "b"])).toBe(false);
+    expect(tableColumns(rows)).toEqual(["name", "role", "due"]);
+  });
+
+  it("does not take a list of records for a report", () => {
+    expect(isDocument([{ sections: [{ text: "x" }] }])).toBe(false);
   });
 });

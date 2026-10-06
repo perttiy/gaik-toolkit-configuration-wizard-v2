@@ -16,11 +16,14 @@ import {
   isAudioInput,
   isDocument,
   isList,
+  isStructured,
+  isTable,
   parseInput,
   problemCount,
   shapeProcess,
   show,
   stepState,
+  tableColumns,
   toCsv,
   toMarkdown,
   uncertainField,
@@ -140,7 +143,7 @@ export function CaseWorkflow({ sessionId, strings: s, dateLocale }: Props) {
   const roleName = (id: string | null | undefined) =>
     model.process.lanes.find((l) => l.id === id)?.name ?? s.aiRole;
   const statusBadge = (st: Case["status"]) =>
-    st === "approved" ? "badge-success" : st === "review" || st === "draft" ? "badge-warning" : st === "running" ? "badge-info" : "badge";
+    st === "approved" || st === "completed" ? "badge-success" : st === "review" || st === "draft" ? "badge-warning" : st === "running" ? "badge-info" : "badge";
 
   return (
     <div className="flex flex-col gap-4">
@@ -290,7 +293,7 @@ function CaseView(p: ViewProps) {
               <p className="text-sm text-text-muted mt-1">{s.aiRunningHint}{c.run_phase ? ` (${c.run_phase})` : ""}</p>
               <ul className="mt-3 text-sm list-disc pl-5">{shaped.aiSteps.map((n) => <li key={n.id}>{n.name}</li>)}</ul>
             </div>
-          ) : c.status === "approved" || c.status === "rejected" ? (
+          ) : c.status === "approved" || c.status === "rejected" || c.status === "completed" ? (
             <DoneView {...p} />
           ) : !mine ? (
             <div>
@@ -434,12 +437,12 @@ function InputView(p: ViewProps & { task: ProcessNode }) {
 
 function ReviewView(p: ViewProps) {
   const { caseData: c, model, s, base } = p;
-  const original = (c.result?.record ?? {}) as CaseRecord;
-  const [rec, setRec] = useState<CaseRecord>(() => structuredClone((c.record ?? original) as CaseRecord));
+  const original = (c.result?.record ?? {}) as CaseRecord | CaseRecord[];
+  const [rec, setRec] = useState<CaseRecord | CaseRecord[]>(() => structuredClone(c.record ?? original));
   const [ask, setAsk] = useState<null | "return" | "reject">(null);
   const [comment, setComment] = useState("");
   const doc = isDocument(rec);
-  const bad = doc ? docProblems(rec) : problemCount(model.spec, rec);
+  const bad = doc ? docProblems(rec as CaseRecord) : problemCount(model.spec, rec);
   const reviewer = p.roleName(p.shaped.reviewTask?.lane);
 
   async function send(action: "approve" | "return" | "reject") {
@@ -462,9 +465,24 @@ function ReviewView(p: ViewProps) {
         </p>
       )}
       {doc ? (
-        <DocumentEditor rec={rec} original={original} setRec={setRec} s={s} />
+        <DocumentEditor rec={rec as CaseRecord} original={original as CaseRecord} setRec={setRec} s={s} />
+      ) : Array.isArray(rec) ? (
+        <div className="flex flex-col gap-4">
+          {rec.map((item, i) => (
+            <fieldset key={i} className="rounded-md border border-border p-3">
+              <legend className="px-1 text-sm font-semibold">{s.item} {i + 1}</legend>
+              <RecordForm
+                spec={model.spec}
+                rec={item}
+                original={((original as CaseRecord[])[i] ?? {}) as CaseRecord}
+                setRec={(next) => setRec(rec.map((x, j) => (j === i ? next : x)))}
+                s={s}
+              />
+            </fieldset>
+          ))}
+        </div>
       ) : (
-        <RecordForm spec={model.spec} rec={rec} original={original} setRec={setRec} s={s} />
+        <RecordForm spec={model.spec} rec={rec} original={original as CaseRecord} setRec={setRec} s={s} />
       )}
       <div className="flex flex-wrap gap-2">
         <button type="button" className="btn-brand" data-testid="case-approve" disabled={p.busy || bad > 0} onClick={() => send("approve")}>
@@ -550,9 +568,13 @@ function RecordForm({ spec, rec, original, setRec, s }: { spec: OutputSpec; rec:
             </label>
             <p className="text-xs text-text-muted mb-1">
               {spec.field_descriptions?.[f]}
-              {isList(spec, f) ? ` · ${s.listHint}` : ""}
+              {isList(spec, f) && !isStructured(rec[f]?.[0 as never]) && !/list\[(dict|list)/.test(spec.field_types?.[f] ?? "") ? ` · ${s.listHint}` : ""}
             </p>
-            {allowed ? (
+            {isTable(rec[f]) || (Array.isArray(rec[f]) && /list\[dict\]/.test(spec.field_types?.[f] ?? "")) ? (
+              <TableEditor rows={(rec[f] as CaseRecord[]) ?? []} onChange={(rows) => setRec({ ...rec, [f]: rows })} s={s} testId={common["data-testid"]} />
+            ) : isStructured(rec[f]) && !(Array.isArray(rec[f]) && (rec[f] as unknown[]).every((x) => typeof x !== "object")) ? (
+              <JsonField value={rec[f]} onChange={(v) => setRec({ ...rec, [f]: v })} className={common.className} testId={common["data-testid"]} />
+            ) : allowed ? (
               <select {...common} value={show(rec[f])} onChange={(e) => change(e.target.value)}>
                 <option value="" />
                 {allowed.map((a) => <option key={a}>{a}</option>)}
@@ -564,7 +586,7 @@ function RecordForm({ spec, rec, original, setRec, s }: { spec: OutputSpec; rec:
             )}
             {edited && (
               <p className="text-xs text-text-muted mt-1">
-                {s.ai} <em>{show(original[f]) || "—"}</em> ·{" "}
+                {s.ai} <em>{isStructured(original[f]) ? "…" : show(original[f]) || "—"}</em> ·{" "}
                 <button type="button" className="underline" onClick={() => setRec({ ...rec, [f]: structuredClone(original[f]) })}>{s.restore}</button>
               </p>
             )}
@@ -580,12 +602,112 @@ function RecordForm({ spec, rec, original, setRec, s }: { spec: OutputSpec; rec:
   );
 }
 
+/** A list of objects as an editable table: one row per item, a column per key. */
+function TableEditor({ rows, onChange, s, testId }: { rows: CaseRecord[]; onChange: (rows: CaseRecord[]) => void; s: CaseStrings; testId?: string }) {
+  const cols = tableColumns(rows);
+  const set = (i: number, k: string, v: unknown) => onChange(rows.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
+  return (
+    <div className="overflow-x-auto rounded-md border border-border-strong" data-testid={testId}>
+      <table className="w-full text-xs">
+        <thead className="bg-surface-muted">
+          <tr>
+            {cols.map((k) => <th key={k} className="px-2 py-1 text-left font-semibold">{humanize(k)}</th>)}
+            <th />
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <tr key={i} className="border-t border-border align-top">
+              {cols.map((k) => (
+                <td key={k} className="p-1 min-w-[110px]">
+                  {isStructured(r[k]) ? (
+                    <JsonField value={r[k]} onChange={(v) => set(i, k, v)} className="input-field text-xs" />
+                  ) : (
+                    <textarea
+                      rows={Math.min(4, Math.max(1, Math.ceil(show(r[k]).length / 40)))}
+                      className="input-field text-xs px-2 py-1"
+                      value={show(r[k])}
+                      onChange={(e) => set(i, k, e.target.value === "" ? null : e.target.value)}
+                    />
+                  )}
+                </td>
+              ))}
+              <td className="p-1">
+                <button type="button" className="text-danger-text text-xs underline" onClick={() => onChange(rows.filter((_, j) => j !== i))}>
+                  {s.removeRow}
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <button
+        type="button"
+        className="m-1 text-xs underline text-brand-strong"
+        onClick={() => onChange([...rows, Object.fromEntries(cols.map((k) => [k, null]))])}
+      >
+        + {s.addRow}
+      </button>
+    </div>
+  );
+}
+
+/** A structured value edited as JSON; kept as text until it parses again. */
+function JsonField({ value, onChange, className, testId }: { value: unknown; onChange: (v: unknown) => void; className?: string; testId?: string }) {
+  const [text, setText] = useState(() => JSON.stringify(value));
+  const [bad, setBad] = useState(false);
+  return (
+    <textarea
+      data-testid={testId}
+      className={`${className ?? ""} font-mono ${bad ? "border-danger-text" : ""}`}
+      value={text}
+      onChange={(e) => {
+        setText(e.target.value);
+        try {
+          onChange(JSON.parse(e.target.value));
+          setBad(false);
+        } catch {
+          setBad(true);
+        }
+      }}
+    />
+  );
+}
+
+function ValueView({ value }: { value: unknown }) {
+  if (isTable(value)) {
+    const cols = tableColumns(value);
+    return (
+      <table className="w-full text-xs border border-border">
+        <thead className="bg-surface-muted"><tr>{cols.map((k) => <th key={k} className="px-2 py-1 text-left">{humanize(k)}</th>)}</tr></thead>
+        <tbody>
+          {value.map((r, i) => (
+            <tr key={i} className="border-t border-border align-top">
+              {cols.map((k) => <td key={k} className="px-2 py-1">{isStructured(r[k]) ? JSON.stringify(r[k]) : show(r[k]) || "—"}</td>)}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    );
+  }
+  if (isStructured(value) && !(Array.isArray(value) && value.every((x) => typeof x !== "object"))) {
+    return <code className="text-xs">{JSON.stringify(value)}</code>;
+  }
+  return <>{show(value) || "—"}</>;
+}
+
 function DoneView(p: ViewProps) {
   const { caseData: c, model, s } = p;
-  const rec = (c.record ?? {}) as CaseRecord;
-  const doc = isDocument(rec);
+  const raw = c.record ?? {};
+  const list = Array.isArray(raw) ? raw : [raw];
+  const rec = list[0] ?? {};
+  const doc = isDocument(raw);
   const name = (model.spec.schema_name || "result").toLowerCase();
-  const exported = { ...rec, review_status: "approved", approved_at: c.events.at(-1)?.at };
+  const stamp = c.events.at(-1)?.at;
+  const approved = c.status === "approved";
+  const exported: CaseRecord | CaseRecord[] = approved
+    ? Array.isArray(raw) ? raw.map((r) => ({ ...r, review_status: r.review_status ?? "approved" })) : { ...raw, review_status: "approved", approved_at: stamp }
+    : raw;
 
   function printPdf() {
     const w = window.open("", "_blank");
@@ -593,10 +715,15 @@ function DoneView(p: ViewProps) {
     const esc = (t: string) => t.replace(/[&<>]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[ch] as string);
     const body = doc
       ? `<pre style="white-space:pre-wrap;font:11pt/1.45 Helvetica,Arial">${esc(toMarkdown(rec))}</pre>`
-      : `<table style="border-collapse:collapse;width:100%;font:11pt Helvetica,Arial">${formFields(model.spec)
-          .map((f) => `<tr><td style="border-bottom:1px solid #bbb;padding:6px;font-weight:bold;width:32%">${esc(humanize(f))}</td><td style="border-bottom:1px solid #bbb;padding:6px">${esc(show(rec[f]) || "—")}</td></tr>`)
-          .join("")}</table>`;
-    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(model.title)}</title></head><body style="margin:32px"><h2 style="font-family:Helvetica,Arial">${esc(model.title)}</h2><p style="font-family:Helvetica,Arial">${s.approvedTitle} ${esc(new Date(String(exported.approved_at ?? Date.now())).toLocaleString(p.dateLocale))}</p>${body}</body></html>`);
+      : list
+          .map(
+            (r) => `<table style="border-collapse:collapse;width:100%;font:11pt Helvetica,Arial;margin-bottom:18px">${formFields(model.spec)
+              .map((f) => `<tr><td style="border-bottom:1px solid #bbb;padding:6px;font-weight:bold;width:28%;vertical-align:top">${esc(humanize(f))}</td><td style="border-bottom:1px solid #bbb;padding:6px">${esc(isStructured(r[f]) ? JSON.stringify(r[f], null, 1) : show(r[f]) || "—")}</td></tr>`)
+              .join("")}</table>`,
+          )
+          .join("");
+    const when = new Date(String(stamp ?? Date.now())).toLocaleString(p.dateLocale);
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(model.title)}</title></head><body style="margin:32px"><h2 style="font-family:Helvetica,Arial">${esc(model.title)}</h2><p style="font-family:Helvetica,Arial">${approved ? s.approvedTitle : s.completedTitle} ${esc(when)}</p>${body}</body></html>`);
     w.document.close();
     w.focus();
     w.print();
@@ -612,18 +739,20 @@ function DoneView(p: ViewProps) {
   }
   return (
     <div className="flex flex-col gap-3" data-testid="case-done">
-      <h3 className="font-semibold">{s.approvedTitle}</h3>
+      <h3 className="font-semibold">{approved ? s.approvedTitle : s.completedTitle}</h3>
       {doc ? (
         <pre className="max-h-[520px] overflow-auto whitespace-pre-wrap rounded-md border border-border bg-app p-3 text-xs">{toMarkdown(rec)}</pre>
       ) : (
-        <dl className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-x-3 gap-y-1.5 text-sm">
-          {formFields(model.spec).map((f) => (
-            <div key={f} className="contents">
-              <dt className="font-medium text-text-secondary">{humanize(f)}</dt>
-              <dd>{show(rec[f]) || "—"}</dd>
-            </div>
-          ))}
-        </dl>
+        list.map((r, i) => (
+          <dl key={i} className={`grid grid-cols-[minmax(0,1fr)_minmax(0,3fr)] gap-x-3 gap-y-1.5 text-sm ${list.length > 1 ? "rounded-md border border-border p-3" : ""}`}>
+            {formFields(model.spec).map((f) => (
+              <div key={f} className="contents">
+                <dt className="font-medium text-text-secondary">{humanize(f)}</dt>
+                <dd className="min-w-0 overflow-x-auto"><ValueView value={r[f]} /></dd>
+              </div>
+            ))}
+          </dl>
+        ))
       )}
       <div className="flex flex-wrap gap-2">
         <button type="button" className="btn-secondary" onClick={() => download(`${name}.json`, "application/json", JSON.stringify(exported, null, 2))}>
@@ -647,8 +776,8 @@ function DoneView(p: ViewProps) {
 function SourceView(p: ViewProps) {
   const { caseData: c, s, base, model } = p;
   const validation = c.result?.validation;
-  const rec = c.record as CaseRecord | null;
-  const bad = rec ? (isDocument(rec) ? docProblems(rec) : problemCount(model.spec, rec)) : 0;
+  const rec = c.record;
+  const bad = rec ? (isDocument(rec) ? docProblems(rec as CaseRecord) : problemCount(model.spec, rec)) : 0;
   return (
     <aside className="flex flex-col gap-4 min-w-0">
       {c.inputs.length > 0 && c.status !== "draft" && (
@@ -675,14 +804,16 @@ function SourceView(p: ViewProps) {
           )}
         </div>
       )}
-      {rec && (
+      {rec && (validation || c.status === "review") && (
         <div className="rounded-lg border border-border bg-surface p-4">
           <h3 className="font-semibold mb-2">{s.checks}</h3>
           <div className="flex flex-wrap gap-2">
             {validation && (
               <span className={validation.passed ? "badge-success" : "badge-warning"}>{validation.passed ? s.groundingOk : s.groundingBad}</span>
             )}
-            <span className={bad ? "badge-warning" : "badge-success"}>{bad ? `${bad} ${s.needFixing}` : s.allValid}</span>
+            {c.status === "review" && (
+              <span className={bad ? "badge-warning" : "badge-success"}>{bad ? `${bad} ${s.needFixing}` : s.allValid}</span>
+            )}
           </div>
         </div>
       )}

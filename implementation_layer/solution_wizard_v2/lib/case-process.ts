@@ -43,7 +43,8 @@ export type CaseStatus =
   | "returned"
   | "approved"
   | "rejected"
-  | "failed";
+  | "failed"
+  | "completed";
 
 export type CaseRecord = Record<string, unknown>;
 
@@ -59,13 +60,13 @@ export type Case = {
   run_message: string | null;
   inputs: { name: string; bytes: number }[];
   result: {
-    record: CaseRecord | null;
+    record: CaseRecord | CaseRecord[] | null;
     validation: { passed?: boolean } | null;
     transcript: string;
     document?: string;
     files: string[];
   } | null;
-  record: CaseRecord | null;
+  record: CaseRecord | CaseRecord[] | null;
   events: { at: string; role: string; action: string; detail: string }[];
 };
 
@@ -129,7 +130,7 @@ export function stepState(
   const order = shaped.steps.indexOf(node);
   const inputAt = shaped.steps.indexOf(shaped.inputTask as ProcessNode);
   const reviewAt = shaped.steps.indexOf(shaped.reviewTask as ProcessNode);
-  if (status === "approved") return "done";
+  if (status === "approved" || status === "completed") return "done";
   if (status === "draft" || status === "returned" || status === "failed")
     return order === inputAt ? "current" : "todo";
   if (status === "running")
@@ -178,9 +179,24 @@ export const formFields = (spec: OutputSpec) => {
   return spec.fields.filter((f) => f !== unc);
 };
 
-export function problemCount(spec: OutputSpec, record: CaseRecord): number {
+export function problemCount(spec: OutputSpec, record: CaseRecord | CaseRecord[]): number {
+  if (Array.isArray(record)) return record.reduce((n, r) => n + problemCount(spec, r), 0);
   return formFields(spec).filter((f) => fieldProblem(spec, record, f)).length;
 }
+
+/** A list of objects (participants, decisions…): edited as a table, not as text. */
+export const isTable = (v: unknown): v is CaseRecord[] =>
+  Array.isArray(v) && v.length > 0 && v.every((x) => !!x && typeof x === "object" && !Array.isArray(x));
+
+/** The columns of a table value: every key any row has, in first-seen order. */
+export function tableColumns(rows: CaseRecord[]): string[] {
+  const cols: string[] = [];
+  for (const r of rows) for (const k of Object.keys(r)) if (!cols.includes(k)) cols.push(k);
+  return cols;
+}
+
+/** A cell or value that is itself structured is shown and edited as JSON. */
+export const isStructured = (v: unknown) => v !== null && typeof v === "object";
 
 /** The value a form input produced, in the record's own type. */
 export function parseInput(spec: OutputSpec, field: string, raw: string): unknown {
@@ -191,10 +207,12 @@ export function parseInput(spec: OutputSpec, field: string, raw: string): unknow
     : text;
 }
 
-export function toCsv(record: CaseRecord): string {
-  const keys = Object.keys(record);
-  const q = (v: unknown) => `"${show(v).replace(/"/g, '""')}"`;
-  return "\ufeff" + keys.join(",") + "\n" + keys.map((k) => q(record[k])).join(",") + "\n";
+export function toCsv(record: CaseRecord | CaseRecord[]): string {
+  const rows = Array.isArray(record) ? record : [record];
+  const keys = tableColumns(rows);
+  const cell = (v: unknown) => (isStructured(v) && !(Array.isArray(v) && v.every((x) => typeof x !== "object")) ? JSON.stringify(v) : show(v));
+  const q = (v: unknown) => `"${cell(v).replace(/"/g, '""')}"`;
+  return "\ufeff" + [keys.join(","), ...rows.map((r) => keys.map((k) => q(r[k])).join(","))].join("\n") + "\n";
 }
 
 /** Whether an input data object is audio, so the screen offers recording. */
@@ -205,8 +223,9 @@ export const isAudioInput = (name: string | null) => /audio|voice|recording|ää
 type Section = { id?: string; title?: string; text?: string };
 
 /** A result made of sections of text (a report) rather than a flat record. */
-export function isDocument(record: CaseRecord | null | undefined): boolean {
-  const sections = record?.sections;
+export function isDocument(record: CaseRecord | CaseRecord[] | null | undefined): boolean {
+  if (!record || Array.isArray(record)) return false;
+  const sections = record.sections;
   return (
     Array.isArray(sections) &&
     sections.length > 0 &&

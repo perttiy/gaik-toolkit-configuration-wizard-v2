@@ -537,3 +537,86 @@ def test_a_report_with_an_emptied_section_is_not_approved():
     emptied = {**REPORT, "sections": [{**REPORT["sections"][0], "text": " "}]}
 
     assert case_service.record_problems(emptied, None) == ["section Summary is empty"]
+
+
+# ---------------------------------------------------------------------------
+# Answers to several questions, and a process with no reviewer
+# ---------------------------------------------------------------------------
+
+QA_SPEC = {
+    "fields": ["query_id", "answer", "access_decision"],
+    "required_fields": ["query_id", "answer"],
+    "allowed_values": {"access_decision": ["allowed", "denied"]},
+}
+ANSWERS = [
+    {"query_id": "Q1", "answer": "Forty.", "access_decision": "allowed"},
+    {"query_id": "Q2", "answer": "Not for this role.", "access_decision": "denied"},
+]
+
+
+def _answers_log():
+    return "\n".join(
+        [
+            "=== POC OUTPUT BEGIN ===",
+            "--- output/checks.json ---",
+            json.dumps({"records": 2}),
+            "--- output/result.json ---",
+            json.dumps(ANSWERS),
+            "=== POC OUTPUT END ===",
+        ]
+    )
+
+
+def test_several_records_stay_a_list():
+    assert case_service.parse_run_output(_answers_log(), QA_SPEC)["record"] == ANSWERS
+
+
+def test_without_a_reviewer_the_result_completes_the_case(out):
+    case = _running_case(out)
+
+    done = case_service.finish_run(
+        out,
+        case["id"],
+        phase="succeeded",
+        log=_answers_log(),
+        message=None,
+        spec=QA_SPEC,
+        review_needed=False,
+    )
+
+    assert done["status"] == "completed"
+    assert done["record"] == ANSWERS
+
+
+def test_each_record_of_a_list_is_checked():
+    broken = [ANSWERS[0], {**ANSWERS[1], "access_decision": "maybe"}]
+
+    assert case_service.record_problems(broken, QA_SPEC) == [
+        "#2: access_decision must be one of allowed, denied"
+    ]
+
+
+def test_an_approved_record_that_carries_its_review_status_says_so(out):
+    spec = {
+        **SPEC,
+        "fields": [*SPEC["fields"], "review_status"],
+        "allowed_values": {
+            **SPEC["allowed_values"],
+            "review_status": ["pending review", "approved", "returned"],
+        },
+    }
+    case = _running_case(out)
+    case_service.finish_run(
+        out,
+        case["id"],
+        phase="succeeded",
+        log=_log(record={**RECORD, "review_status": "pending review"}),
+        message=None,
+        spec=spec,
+    )
+
+    approved = case_service.review(
+        out, case["id"], action="approve", role="Reviewer", record=None, comment="", spec=spec
+    )
+
+    assert approved["record"]["review_status"] == "approved"

@@ -84,6 +84,15 @@ def _bpmn(db: Session, session, session_id: uuid.UUID) -> str | None:
         return None
 
 
+def _review_needed(db: Session, session, session_id: uuid.UUID) -> bool:
+    """Whether someone reviews the result: a second user task after the input."""
+    xml = _bpmn(db, session, session_id)
+    if not xml:
+        return True
+    nodes = case_service.process_from_bpmn(xml)["nodes"]
+    return sum(n["kind"] in ("userTask", "manualTask") for n in nodes) >= 2
+
+
 def _case(output_dir: str, case_id: str) -> dict[str, Any]:
     try:
         return case_service.get_case(output_dir, case_id)
@@ -175,6 +184,7 @@ async def get_case(session_id: uuid.UUID, case_id: str, db: Session = Depends(ge
         log=log,
         message=status.message,
         spec=_spec(db, session),
+        review_needed=_review_needed(db, session, session_id),
     )
 
 
