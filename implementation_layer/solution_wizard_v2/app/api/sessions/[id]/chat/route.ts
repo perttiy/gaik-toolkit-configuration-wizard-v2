@@ -63,6 +63,14 @@ export const POST = withLogging("chat.post", async (
       if (upstream.ok && upstream.body) {
         return new Response(upstream.body, { headers: SSE_HEADERS });
       }
+      if (upstream.status === 409) {
+        // The agent is still answering the previous message. Say so; a mock
+        // reply here would be stored as the wizard's answer (#173 wake-up).
+        return new Response(JSON.stringify({ error: "busy" }), {
+          status: 409,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
       logger.warn(
         { traceId: getTraceId(), sessionId: id, status: upstream.status },
         "chat.post agent upstream returned non-ok; falling back to mock reply",

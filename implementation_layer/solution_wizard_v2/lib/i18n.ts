@@ -197,6 +197,7 @@ export type Dict = {
   gate1Answered: string;
   gate1Approve: string;
   gateApprovedWake: string;
+  chatBusy: string;
   bcTitle: string;
   bcCurrentProcess: string;
   bcExpectedValue: string;
@@ -433,6 +434,7 @@ const fi: Dict = {
   gate1Answered: "kohtaa vastattu",
   gate1Approve: "Hyväksy vaatimukset & Jatka →",
   gateApprovedWake: "Gate {n} hyväksytty paneelista, jatka.",
+  chatBusy: "Wizard vastaa vielä edelliseen viestiin. Yritä hetken kuluttua uudelleen.",
   bcTitle: "Liiketoimintakonteksti",
   bcCurrentProcess: "Nykyprosessi",
   bcExpectedValue: "Odotettu arvo",
@@ -691,6 +693,7 @@ const en: Dict = {
   gate1Answered: "points answered",
   gate1Approve: "Approve requirements & Continue →",
   gateApprovedWake: "Gate {n} approved in the panel, continue.",
+  chatBusy: "The wizard is still answering the previous message. Try again in a moment.",
   bcTitle: "Business context",
   bcCurrentProcess: "Current process",
   bcExpectedValue: "Expected value",
