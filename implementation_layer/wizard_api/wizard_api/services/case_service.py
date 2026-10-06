@@ -392,6 +392,27 @@ def _value_problem(spec: dict[str, Any], field: str, value: Any) -> str | None:
     return None
 
 
+def normalize_spec(spec: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The output spec with its field list as names.
+
+    The agent writes ``fields`` as names for a record, but as objects for a
+    report (``{"id": "executive_summary", "title": …, "instructions": …}``);
+    everything downstream reads names.
+    """
+    if not isinstance(spec, dict):
+        return spec
+    names = []
+    for field in spec.get("fields") or []:
+        name = (
+            field
+            if isinstance(field, str)
+            else ((field.get("id") or field.get("name")) if isinstance(field, dict) else None)
+        )
+        if isinstance(name, str) and name:
+            names.append(name)
+    return {**spec, "fields": names}
+
+
 # -- reading a run's result ------------------------------------------------------
 
 
@@ -408,7 +429,7 @@ def parse_run_output(log: str, spec: dict[str, Any] | None) -> dict[str, Any]:
         return {"record": None, "validation": None, "transcript": "", "document": "", "files": []}
     block = log[begin + len(OUTPUT_BEGIN) : end if end > begin else len(log)]
     files = dict(re.findall(r"--- output/([^\n]+?) ---\n(.*?)(?=\n--- output/|\Z)", block, re.S))
-    fields = set((spec or {}).get("fields") or [])
+    fields = set((normalize_spec(spec) or {}).get("fields") or [])
     record = validation = None
     transcript = document = ""
     for name, body in files.items():

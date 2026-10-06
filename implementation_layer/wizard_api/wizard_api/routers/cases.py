@@ -63,7 +63,7 @@ def _spec(db: Session, session) -> dict[str, Any] | None:
     """The output fields: the agent's draft first, as the PoC was built from it."""
     spec = _draft(session.output_dir).get("target_output_spec")
     if isinstance(spec, dict) and spec.get("fields"):
-        return spec
+        return case_service.normalize_spec(spec)
     detail = session_service.session_detail(db, session)
     return detail.target_output_spec.model_dump() if detail.target_output_spec else None
 

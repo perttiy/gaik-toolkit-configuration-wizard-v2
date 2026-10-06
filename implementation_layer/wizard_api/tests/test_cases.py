@@ -641,3 +641,10 @@ def test_a_dotted_field_is_a_column_checked_on_every_row():
     }
 
     assert case_service.record_problems(record, spec) == ["line_item 2: article_code is required"]
+
+
+def test_a_report_spec_whose_fields_are_section_objects_reads_as_names():
+    spec = {"fields": [{"id": "executive_summary", "title": "Summary"}, "period", {"x": 1}]}
+
+    assert case_service.normalize_spec(spec)["fields"] == ["executive_summary", "period"]
+    assert case_service.parse_run_output(_report_log(), spec)["record"] == REPORT
