@@ -51,6 +51,11 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
+  // Node.js, not Edge: the dev session is checked against WIZARD_DEV_USERS and
+  // signed with NEXT_SERVER_ACTIONS_ENCRYPTION_KEY, both set when the pod
+  // starts. Edge middleware sees only what was there at build time, so on a
+  // deployed stack every signed cookie was rejected and nobody could sign in.
+  runtime: "nodejs",
   matcher: [
     "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
