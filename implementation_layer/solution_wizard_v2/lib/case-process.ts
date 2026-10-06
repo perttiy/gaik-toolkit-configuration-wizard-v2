@@ -191,7 +191,8 @@ export function fieldProblem(spec: OutputSpec, record: CaseRecord, field: string
 }
 
 function valueProblem(spec: OutputSpec, field: string, value: unknown): FieldProblem | null {
-  const empty = value == null || show(value).trim() === "";
+  // An empty list is a value given ("no citations"); missing is null or blank text.
+  const empty = value == null || (!Array.isArray(value) && show(value).trim() === "");
   if ((spec.required_fields ?? []).includes(field) && empty) return { kind: "required" };
   if (empty || typeof value !== "string") return null;
   const allowed = spec.allowed_values?.[field];

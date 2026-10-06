@@ -243,3 +243,11 @@ describe("several people giving the input", () => {
     expect(currentTask(shaped, "returned", ["T_kpi"])?.id).toBe("T_aud");
   });
 });
+
+describe("a required list", () => {
+  it("is given when empty, missing when null", () => {
+    const spec: OutputSpec = { fields: ["citations"], required_fields: ["citations"] };
+    expect(fieldProblem(spec, { citations: [] }, "citations")).toBeNull();
+    expect(fieldProblem(spec, { citations: null }, "citations")?.kind).toBe("required");
+  });
+});

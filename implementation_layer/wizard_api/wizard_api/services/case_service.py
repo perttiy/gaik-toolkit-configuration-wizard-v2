@@ -446,7 +446,9 @@ def _table_of(spec: dict[str, Any], prefix: str, record: dict[str, Any]) -> str:
 
 
 def _value_problem(spec: dict[str, Any], field: str, value: Any) -> str | None:
-    empty = value is None or (isinstance(value, str) and not value.strip()) or value == []
+    # An empty list is a value given ("no citations" for a refused answer);
+    # missing is null or blank text.
+    empty = value is None or (isinstance(value, str) and not value.strip())
     if field in (spec.get("required_fields") or []) and empty:
         return "is required"
     if empty or not isinstance(value, str):

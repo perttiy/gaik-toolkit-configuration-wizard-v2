@@ -711,3 +711,12 @@ def test_a_deleted_input_forgets_whose_it_was(out):
     case_service.delete_input(out, case["id"], "kpis.xlsx")
 
     assert case_service.get_case(out, case["id"])["input_tasks"] == {}
+
+
+def test_an_empty_list_is_a_value_given_not_a_missing_one():
+    spec = {"fields": ["answer", "citations"], "required_fields": ["answer", "citations"]}
+
+    assert case_service.record_problems({"answer": "No.", "citations": []}, spec) == []
+    assert case_service.record_problems({"answer": "No.", "citations": None}, spec) == [
+        "citations is required"
+    ]
