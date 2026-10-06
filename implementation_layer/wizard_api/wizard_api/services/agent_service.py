@@ -157,15 +157,6 @@ def _is_notice(text: str) -> bool:
     return bool(_NOTICE_RE.match(text.strip()))
 
 
-def _message_uses_tools(message) -> bool:
-    """True when an assistant message contains a tool call: the text it carries
-    is the agent narrating its work ("Now let me fix the summary section…"),
-    not its reply to the user."""
-    if ToolUseBlock is None:
-        return any(type(block).__name__ == "ToolUseBlock" for block in message.content)
-    return any(isinstance(block, ToolUseBlock) for block in message.content)
-
-
 _LOCALE_LANGUAGE = {"fi": "Finnish", "en": "English"}
 
 
@@ -273,17 +264,20 @@ async def _stream_turn(
     """Stream one wizard turn as SSE (UI contract). Ends at the ResultMessage.
 
     Text deltas are streamed as they come. A turn is made of several assistant
-    messages when the agent uses tools, and the text before a tool call is the
-    agent narrating its work, not its reply (#168): when such a message closes,
-    a ``narration_end`` frame tells the UI to drop what it showed for it, and
-    nothing of it is kept. Only the text of the turn's final message goes into
-    ``out_parts`` for the transcript. A turn whose final text is empty or an
+    messages when the agent uses tools, and the text before a tool call is
+    usually the agent narrating its work, not its reply (#168). It is dropped
+    only once a later message brings real text: a ``narration_end`` frame then
+    tells the UI to clear what it showed for the earlier message, and nothing of
+    it is kept. If the turn ends with no further text, that last pre-tool text
+    *is* the reply (the wizard often writes a summary and saves a file in the
+    same message), so it is kept and no frame is sent. Only one message's text
+    goes into ``out_parts`` for the transcript. A turn whose reply is empty or an
     internal notice ("Background task completed …") is nudged with a quiet
     "Please continue." (up to two retries), mirroring the demo router.
     """
     client = session["client"]
     current: list[str] = []  # text of the assistant message being streamed
-    final_text = ""
+    shown = ""  # text of the last closed message that is still on the user's screen
     try:
         async for message in _receive_with_heartbeat(client):
             if message is None:
@@ -293,6 +287,11 @@ async def _stream_turn(
             if StreamEvent is not None and isinstance(message, StreamEvent):
                 delta = _extract_stream_text(message)
                 if delta:
+                    if not current and shown:
+                        # A new message starts talking: what the previous one
+                        # said was narration after all.
+                        yield sse({"narration_end": True})
+                        shown = ""
                     current.append(delta)
                     yield sse({"delta": delta})
                 continue
@@ -302,16 +301,15 @@ async def _stream_turn(
                     # Without partials the full TextBlocks are the only text.
                     for block in message.content:
                         if isinstance(block, TextBlock) and block.text:
+                            if not current and shown:
+                                yield sse({"narration_end": True})
+                                shown = ""
                             current.append(block.text)
                             yield sse({"delta": block.text})
                 text = "".join(current)
                 current = []
-                if _message_uses_tools(message):
-                    if text.strip():
-                        yield sse({"narration_end": True})
-                    final_text = ""
-                elif text.strip():
-                    final_text = text
+                if text.strip():
+                    shown = text
             elif isinstance(message, ResultMessage):
                 if message.is_error:
                     yield sse(
@@ -321,8 +319,7 @@ async def _stream_turn(
                         }
                     )
                     break
-                if not final_text.strip() and current:
-                    final_text = "".join(current)
+                final_text = shown or "".join(current)
                 if _is_notice(final_text):
                     # Shown while it streamed; take it back, it is not the answer.
                     yield sse({"narration_end": True})
@@ -334,7 +331,7 @@ async def _stream_turn(
                     ):
                         yield chunk
                 else:
-                    out_parts[:] = [final_text] if final_text else []
+                    out_parts[:] = [final_text] if final_text.strip() else []
                     yield sse({"done": True})
                 break
     except Exception as exc:  # noqa: BLE001

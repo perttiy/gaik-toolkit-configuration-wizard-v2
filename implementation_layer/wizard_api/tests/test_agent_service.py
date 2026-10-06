@@ -198,3 +198,27 @@ def test_a_plain_reply_without_tools_is_kept_as_is():
 
     assert parts == ["Hyvä, jatketaan."]
     assert [next(iter(f)) for f in frames] == ["delta", "delta", "done"]
+
+
+def test_a_summary_saved_with_a_tool_call_is_the_reply_when_nothing_follows():
+    """Janne's review of #284: the wizard writes the Gate 1 summary and saves the
+    blueprint in the same message; the turn ends with no further text."""
+    summary = "Here is the specification summary: … Review it in the panel."
+    client = _ScriptedClient(
+        [
+            _delta(summary),
+            _assistant(
+                sdk.TextBlock(text=summary),
+                sdk.ToolUseBlock(id="t1", name="Write", input={}),
+            ),
+            _assistant(sdk.TextBlock(text="")),  # the message after the tool result: empty
+            _result(),
+        ]
+    )
+
+    parts, frames = _run(client)
+
+    assert parts == [summary]
+    assert {"narration_end": True} not in frames  # the user keeps seeing the summary
+    assert client.queries == []
+    assert frames[-1] == {"done": True}
