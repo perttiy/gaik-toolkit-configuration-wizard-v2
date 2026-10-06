@@ -434,6 +434,28 @@ note to the user.
 """
 
 
+def transcript_exists(sdk_session_id: str) -> bool | None:
+    """Whether the CLI still has the transcript to resume from.
+
+    The CLI starts fine with ``--resume <id>`` and reports "No conversation
+    found" only on the first turn, so a stale id would fail every message for
+    good. The transcript is ``<state dir>/projects/<cwd slug>/<id>.jsonl``; when
+    no state dir is configured there is nothing to check and None is returned.
+    """
+    state_dir = agent_state_dir()
+    if state_dir is None:
+        return None
+    return any((state_dir / "projects").glob(f"*/{sdk_session_id}.jsonl"))
+
+
+def frame_is_error(frame: str) -> bool:
+    """True for an SSE frame carrying ``{"error": true}``."""
+    try:
+        return bool(json.loads(frame[len("data: ") :]).get("error"))
+    except (ValueError, AttributeError):
+        return False
+
+
 async def get_or_create_session(
     session_id: str,
     output_dir: str,
@@ -472,6 +494,10 @@ async def get_or_create_session(
     client = None
     resumed: str | None = None
     sdk_session_id: str | None = None
+    if resume_id and transcript_exists(resume_id) is False:
+        logger.info("agent session %s has no transcript to resume for %s", resume_id, session_id)
+        resume_id = None
+        transcript = transcript or []  # still a restart: fall through to the notice
     if resume_id:
         # The CLI session from before the restart or the idle reap: with its
         # transcript on the sessions volume, the agent comes back with its own
@@ -494,7 +520,7 @@ async def get_or_create_session(
         # Bootstrap turn: invoke the skill + pin output dir. Drained silently —
         # the prompt tells the agent not to greet, so it produces nothing
         # user-facing. After a lost context the stored transcript rides along.
-        restore = restore_context_prompt(transcript) if (resume_id or transcript) else ""
+        restore = restore_context_prompt(transcript) if transcript is not None else ""
         await client.query(_bootstrap_prompt(out, locale) + restore)
         result = await _drain_silent(client)
         sdk_session_id = getattr(result, "session_id", None)

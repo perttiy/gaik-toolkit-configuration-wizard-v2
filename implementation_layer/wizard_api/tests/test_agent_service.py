@@ -175,3 +175,21 @@ def test_the_stream_remembers_the_cli_session_id():
     asyncio.run(go())
 
     assert session["sdk_session_id"] == "sdk-777"
+
+
+def test_a_resume_is_only_tried_when_the_cli_still_has_the_transcript(tmp_path, monkeypatch):
+    monkeypatch.setenv("WIZARD_AGENT_STATE_DIR", str(tmp_path))
+    assert agent_service.transcript_exists("sdk-1") is False
+    (tmp_path / "projects" / "-solution-wizard").mkdir(parents=True)
+    (tmp_path / "projects" / "-solution-wizard" / "sdk-1.jsonl").write_text("{}\n")
+    assert agent_service.transcript_exists("sdk-1") is True
+    # No state dir configured: nothing to check, the resume is simply tried.
+    monkeypatch.delenv("WIZARD_AGENT_STATE_DIR", raising=False)
+    monkeypatch.delenv("WIZARD_SESSION_OUTPUT_ROOT", raising=False)
+    assert agent_service.transcript_exists("sdk-1") is None
+
+
+def test_frame_is_error_reads_the_sse_frame():
+    assert agent_service.frame_is_error(agent_service.sse({"error": True, "message": "x"}))
+    assert not agent_service.frame_is_error(agent_service.sse({"delta": "hi"}))
+    assert not agent_service.frame_is_error("garbage")
