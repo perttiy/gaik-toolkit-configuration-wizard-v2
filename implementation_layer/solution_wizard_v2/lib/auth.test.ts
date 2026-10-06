@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   DEV_USERS,
-  formatDevAccountsHint,
   isDevUserEmail,
   validateDevCredentials,
 } from "./auth";
@@ -20,8 +19,4 @@ describe("dev auth", () => {
     expect(isDevUserEmail("other@gaik.local")).toBe(false);
   });
 
-  it("formats account hint for login errors", () => {
-    expect(formatDevAccountsHint()).toContain("dev@gaik.local / gaik");
-    expect(formatDevAccountsHint()).toContain("dev2@gaik.local / gaik2");
-  });
 });

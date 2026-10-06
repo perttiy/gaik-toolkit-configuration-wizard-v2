@@ -22,9 +22,3 @@ export function validateDevCredentials(email: string, password: string): boolean
 export function isDevUserEmail(email: string): boolean {
   return email in DEV_USERS;
 }
-
-export function formatDevAccountsHint(): string {
-  return Object.entries(DEV_USERS)
-    .map(([e, p]) => `${e} / ${p}`)
-    .join(" · ");
-}

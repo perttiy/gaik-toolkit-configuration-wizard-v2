@@ -4,12 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
-import {
-  DEV_AUTH,
-  DEV_COOKIE,
-  formatDevAccountsHint,
-  validateDevCredentials,
-} from "@/lib/auth";
+import { DEV_AUTH, DEV_COOKIE, validateDevCredentials } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { getIncomingTraceId } from "@/lib/request-context";
 
@@ -32,10 +27,9 @@ async function devSignIn(formData: FormData) {
 
   // Never log the attempted password — only the email that was tried.
   audit("auth.login", { actor: email, outcome: "denied", traceId, mode: "dev" });
-  redirect(
-    "/login?error=" +
-      encodeURIComponent(`Väärä dev-tunnus (${formatDevAccountsHint()})`),
-  );
+  // The message names no account and no password: it used to list every dev
+  // account with its password, on instances anyone can reach.
+  redirect("/login?error=" + encodeURIComponent("Väärä tunnus tai salasana."));
 }
 
 export async function login(formData: FormData) {
