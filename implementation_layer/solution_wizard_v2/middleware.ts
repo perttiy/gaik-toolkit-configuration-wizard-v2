@@ -56,7 +56,12 @@ export const config = {
   // starts. Edge middleware sees only what was there at build time, so on a
   // deployed stack every signed cookie was rejected and nobody could sign in.
   runtime: "nodejs",
+  // The file uploads are left out. On the Node.js runtime the middleware hands
+  // the route a copy of the request, and a body that arrives in parts (any
+  // upload through the Rahti router) reached the route cut short: "Failed to
+  // parse body as FormData", one upload in three. Those routes check the
+  // signed-in owner themselves (requireOwnedSession), as every API route does.
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|api/sessions/[^/]+/poc/input$|api/sessions/[^/]+/cases/[^/]+/inputs$|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
