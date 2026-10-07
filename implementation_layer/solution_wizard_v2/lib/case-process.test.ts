@@ -14,6 +14,7 @@ import {
   isAudioInput,
   isDocument,
   isLastInput,
+  phoneLayout,
   isTable,
   parseInput,
   problemCount,
@@ -97,6 +98,23 @@ describe("the process from the BPMN", () => {
   it("knows an audio input asks for recording", () => {
     expect(isAudioInput("Report Audio")).toBe(true);
     expect(isAudioInput("User Input")).toBe(false);
+  });
+});
+
+describe("what a phone folds away", () => {
+  it("drops the step bar for the person at their own task, and keeps it elsewhere", () => {
+    expect(phoneLayout("draft", "input").stepBar).toBe(false);
+    expect(phoneLayout("review", "review").stepBar).toBe(false);
+    expect(phoneLayout("running", "other").stepBar).toBe(true);
+    expect(phoneLayout("approved", "other").stepBar).toBe(true);
+  });
+
+  it("offers the source as a sheet once there is a source to show", () => {
+    expect(phoneLayout("draft", "input").sourceSheet).toBe(false);
+    expect(phoneLayout("draft", "other").sourceSheet).toBe(false);
+    expect(phoneLayout("review", "review").sourceSheet).toBe(true);
+    expect(phoneLayout("running", "other").sourceSheet).toBe(true);
+    expect(phoneLayout("completed", "other").sourceSheet).toBe(true);
   });
 });
 

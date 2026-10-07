@@ -16,6 +16,7 @@ import {
   findInText,
   groupCases,
   isLastInput,
+  phoneLayout,
   logTail,
   shortStepName,
   fieldProblem,
@@ -285,11 +286,18 @@ type ViewProps = {
 function CaseView(props: ViewProps) {
   const [focus, setFocus] = useState<unknown>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const p = { ...props, focus, setFocus, preview, setPreview };
+  const [sourceOpen, setSourceOpen] = useState(false);
+  const openPreview = (name: string | null) => {
+    setPreview(name);
+    if (name) setSourceOpen(true);
+  };
+  const p = { ...props, focus, setFocus, preview, setPreview: openPreview };
   const { caseData: c, shaped, s, role } = p;
   const task = currentTask(shaped, c.status, c.steps_done);
   const mine = task && task.lane === role;
   const inputScreen = !!mine && shaped.inputTasks.includes(task as ProcessNode);
+  const reviewScreen = !!mine && !inputScreen;
+  const phone = phoneLayout(c.status, inputScreen ? "input" : reviewScreen ? "review" : "other");
 
   return (
     <section className="flex flex-col gap-4 min-w-0">
@@ -298,8 +306,9 @@ function CaseView(props: ViewProps) {
           ← {s.backToList}
         </button>
       )}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-sm text-text-muted">{s.role}:</span>
+      {/* One row on a phone, scrolling sideways, so the top stays short. */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
+        <span className="shrink-0 text-sm text-text-muted">{s.role}:</span>
         {shaped.roles.map((l) => {
           const turn = task?.lane === l.id;
           return (
@@ -308,7 +317,7 @@ function CaseView(props: ViewProps) {
               type="button"
               onClick={() => p.setRole(l.id)}
               data-testid={`case-role-${l.id}`}
-              className={`inline-flex items-center gap-2 rounded-full border-2 px-3 py-1 text-sm font-medium ${role === l.id ? "" : "border-border"}`}
+              className={`inline-flex shrink-0 items-center gap-2 rounded-full border-2 px-3 py-1 text-sm font-medium ${role === l.id ? "" : "border-border"}`}
               style={role === l.id ? { borderColor: p.laneColor(l.id) } : undefined}
             >
               <span className="h-2.5 w-2.5 rounded-full" style={{ background: p.laneColor(l.id) }} />
@@ -317,14 +326,41 @@ function CaseView(props: ViewProps) {
             </button>
           );
         })}
-        <span className={`ml-auto ${p.statusBadge(c.status)}`} data-testid="case-status">
+        <span className={`ml-auto hidden shrink-0 sm:inline-flex ${p.statusBadge(c.status)}`} data-testid="case-status">
           {s.status[c.status]}
           {c.round > 1 ? ` · ${s.roundLabel} ${c.round}` : ""}
         </span>
+        {phone.sourceSheet && (
+          <button
+            type="button"
+            className="btn-secondary hidden shrink-0 py-1 text-sm sm:inline-flex xl:hidden"
+            onClick={() => setSourceOpen(true)}
+          >
+            {s.source} ↑
+          </button>
+        )}
+      </div>
+      {/* On a phone the status and the source are their own short row, since the
+          role row scrolls and would carry them out of sight. */}
+      <div className="-mt-2 flex items-center justify-between gap-2 sm:hidden">
+        <span className={p.statusBadge(c.status)} data-testid="case-status-phone">
+          {s.status[c.status]}
+          {c.round > 1 ? ` · ${s.roundLabel} ${c.round}` : ""}
+        </span>
+        {phone.sourceSheet && (
+          <button
+            type="button"
+            className="btn-secondary py-1 text-sm"
+            onClick={() => setSourceOpen(true)}
+            data-testid="case-source-open"
+          >
+            {s.source} ↑
+          </button>
+        )}
       </div>
 
-      {/* The person giving the input on a phone needs their task, not the whole process. */}
-      <ol className={`${inputScreen ? "hidden sm:flex" : "flex"} gap-0 overflow-x-auto pb-1`} aria-label="steps">
+      {/* A person at their own task on a phone needs the task, not the whole process. */}
+      <ol className={`${phone.stepBar ? "flex" : "hidden sm:flex"} gap-0 overflow-x-auto pb-1`} aria-label="steps">
         {shaped.steps.map((n) => {
           const st = stepState(shaped, c.status, n, c.steps_done);
           return (
@@ -367,9 +403,25 @@ function CaseView(props: ViewProps) {
             <ReviewView {...p} />
           )}
         </div>
-        <div className={inputScreen ? "hidden xl:block" : ""}>
+        {/* Beside the form on a wide screen; on a phone a sheet that rises from
+            the bottom when asked, so the form comes first and the source is a tap away. */}
+        <div className="hidden xl:block">
           <SourceView {...p} />
         </div>
+        {phone.sourceSheet && sourceOpen && (
+          <div className="fixed inset-0 z-30 xl:hidden" role="dialog" aria-label={s.source} data-testid="case-source-sheet">
+            <button type="button" className="absolute inset-0 bg-black/40" aria-label={s.closePreview} onClick={() => setSourceOpen(false)} />
+            <div className="absolute inset-x-0 bottom-0 max-h-[80vh] overflow-y-auto rounded-t-2xl border-t border-border bg-app p-4 shadow-xl">
+              <div className="mb-3 flex items-center">
+                <span className="mx-auto h-1.5 w-10 rounded-full bg-border-strong" aria-hidden />
+                <button type="button" className="absolute right-4 top-3 text-sm underline" onClick={() => setSourceOpen(false)} data-testid="case-source-close">
+                  {s.closePreview}
+                </button>
+              </div>
+              <SourceView {...p} />
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );
@@ -666,13 +718,18 @@ function ReviewView(p: ViewProps) {
       )}
       {/* Kept in view however long the form is: the decision is what this screen is for. */}
       <div className="sticky bottom-0 z-10 -mx-4 -mb-4 mt-2 flex flex-col gap-2 border-t border-border bg-surface/95 px-4 py-3 backdrop-blur-sm rounded-b-lg" data-testid="case-actions">
-      <div className="flex flex-wrap gap-2">
-        <button type="button" className="btn-brand" data-testid="case-approve" disabled={p.busy || bad > 0} onClick={() => send("approve")}>
+      {/* Three buttons on one row on a phone, each a third wide; the reset is a
+          small line under them. Wider screens keep the row with the reset at the end. */}
+      <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap">
+        <button type="button" className="btn-brand whitespace-nowrap px-2 sm:px-4" data-testid="case-approve" disabled={p.busy || bad > 0} onClick={() => send("approve")}>
           {s.approve}
         </button>
-        <button type="button" className="btn-secondary" onClick={() => { setAsk("return"); setComment(""); }}>{s.returnForFix}</button>
-        <button type="button" className="btn-secondary text-danger-text" onClick={() => { setAsk("reject"); setComment(""); }}>{s.reject}</button>
-        <button type="button" className="ml-auto self-center text-xs text-text-muted underline" onClick={() => setRec(structuredClone(original))}>{s.restoreAll}</button>
+        <button type="button" className="btn-secondary whitespace-nowrap px-2 sm:px-4" onClick={() => { setAsk("return"); setComment(""); }}>
+          <span className="sm:hidden">{s.returnShort}</span>
+          <span className="hidden sm:inline">{s.returnForFix}</span>
+        </button>
+        <button type="button" className="btn-secondary whitespace-nowrap px-2 text-danger-text sm:px-4" onClick={() => { setAsk("reject"); setComment(""); }}>{s.reject}</button>
+        <button type="button" className="col-span-3 justify-self-end text-xs text-text-muted underline sm:col-span-1 sm:ml-auto sm:self-center" onClick={() => setRec(structuredClone(original))}>{s.restoreAll}</button>
       </div>
       {ask && (
         <div className="rounded-md border border-border-strong p-3 flex flex-col gap-2">

@@ -138,6 +138,23 @@ export function currentTask(
   return undefined;
 }
 
+/**
+ * What the case view folds away on a phone (#299). A person at their own task
+ * needs the task, not the whole process: the step bar goes for the input and
+ * the review screens. The source (recording, transcript, events) is a sheet
+ * that rises from the bottom, except on the input screen, where there is no
+ * source yet, and for a draft, which has nothing to show.
+ */
+export function phoneLayout(
+  status: CaseStatus,
+  screen: "input" | "review" | "other",
+): { stepBar: boolean; sourceSheet: boolean } {
+  return {
+    stepBar: screen === "other",
+    sourceSheet: screen !== "input" && status !== "draft",
+  };
+}
+
 /** Whether the task is the last input step, the one that sends the case to the AI. */
 export const isLastInput = (shaped: ShapedProcess, node?: ProcessNode) =>
   !!node && shaped.inputTasks.at(-1)?.id === node.id;
