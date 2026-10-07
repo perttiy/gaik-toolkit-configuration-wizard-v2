@@ -298,3 +298,76 @@ export function toMarkdown(record: CaseRecord): string {
   }
   return parts.join("\n\n") + "\n";
 }
+
+// -- presentation helpers --------------------------------------------------------
+
+/** A BPMN task name short enough for the step bar; the full name goes in a tooltip. */
+export function shortStepName(name: string, max = 30): string {
+  const clean = name.trim();
+  if (clean.length <= max) return clean;
+  const cut = clean.slice(0, max + 1);
+  const atWord = cut.lastIndexOf(" ");
+  return `${(atWord > max / 2 ? cut.slice(0, atWord) : clean.slice(0, max)).replace(/[\s,;:–-]+$/, "")}…`;
+}
+
+export type CaseSummary = {
+  id: string;
+  created_at: string;
+  status: CaseStatus;
+  round: number;
+  steps_done?: string[];
+};
+
+const FINISHED: CaseStatus[] = ["approved", "rejected", "completed"];
+
+/**
+ * The case list as the person in `role` reads it: the cases waiting for them
+ * first, then the others still open, then the finished ones.
+ */
+export function groupCases(cases: CaseSummary[], shaped: ShapedProcess, role: string | null) {
+  const mine: CaseSummary[] = [];
+  const open: CaseSummary[] = [];
+  const done: CaseSummary[] = [];
+  for (const c of cases) {
+    if (FINISHED.includes(c.status)) done.push(c);
+    else if (role && currentTask(shaped, c.status, c.steps_done ?? [])?.lane === role) mine.push(c);
+    else open.push(c);
+  }
+  return { mine, open, done };
+}
+
+/** Where a value appears in a source text, case-insensitively: [start, end) pairs. */
+export function findInText(text: string, value: unknown): [number, number][] {
+  const needle = typeof value === "string" ? value.trim() : typeof value === "number" ? String(value) : "";
+  if (needle.length < 2 || !text) return [];
+  const hay = text.toLowerCase();
+  const n = needle.toLowerCase();
+  const found: [number, number][] = [];
+  for (let i = hay.indexOf(n); i >= 0; i = hay.indexOf(n, i + n.length)) found.push([i, i + n.length]);
+  return found;
+}
+
+/** The input files a report cites as `[name.ext]`, limited to the case's own inputs. */
+export function citedInputs(text: string, inputs: string[]): string[] {
+  const known = new Set(inputs);
+  const found = new Set<string>();
+  for (const m of text.matchAll(/\[([^\[\]\n]{1,200}?\.[A-Za-z0-9]{1,5})\]/g)) {
+    if (known.has(m[1])) found.add(m[1]);
+  }
+  return [...found];
+}
+
+/** The last lines of a run's log worth showing while it runs: no blanks, no markers. */
+export function logTail(lines: string[], count = 6): string[] {
+  return lines
+    .map((l) => l.trimEnd())
+    .filter((l) => l.trim() && !/^=== POC OUTPUT|^--- output\//.test(l))
+    .slice(-count);
+}
+
+/** m:ss since an ISO time. */
+export function elapsed(sinceIso: string | undefined, now: number): string {
+  if (!sinceIso) return "";
+  const s = Math.max(0, Math.floor((now - Date.parse(sinceIso)) / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}

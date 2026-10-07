@@ -2,14 +2,22 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CaseStrings } from "@/lib/case-strings";
+import { renderMarkdown } from "@/lib/markdown";
 import {
   type Case,
   type CaseModel,
   type CaseRecord,
+  type CaseSummary,
   type OutputSpec,
   type ProcessNode,
+  citedInputs,
   currentTask,
+  elapsed,
+  findInText,
+  groupCases,
   isLastInput,
+  logTail,
+  shortStepName,
   fieldProblem,
   formFields,
   formatOf,
@@ -55,7 +63,7 @@ export function CaseWorkflow({ sessionId, strings: s, dateLocale }: Props) {
   const base = `/api/sessions/${sessionId}/cases`;
   const [model, setModel] = useState<CaseModel | null>(null);
   const [modelError, setModelError] = useState<string | null>(null);
-  const [cases, setCases] = useState<{ id: string; created_at: string; status: Case["status"]; round: number }[]>([]);
+  const [cases, setCases] = useState<CaseSummary[]>([]);
   const [current, setCurrent] = useState<Case | null>(null);
   const [role, setRole] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -150,13 +158,36 @@ export function CaseWorkflow({ sessionId, strings: s, dateLocale }: Props) {
   const statusBadge = (st: Case["status"]) =>
     st === "approved" || st === "completed" ? "badge-success" : st === "review" || st === "draft" ? "badge-warning" : st === "running" ? "badge-info" : "badge";
 
+  // The role the open case is shown as, so the list and the case agree.
+  const listRole = role ?? task?.lane ?? shaped.roles[0]?.id ?? null;
+  const groups = groupCases(cases, shaped, listRole);
+  const number = (id: string) => cases.length - cases.findIndex((c) => c.id === id);
+  const caseButton = (c: CaseSummary) => (
+    <li key={c.id}>
+      <button
+        type="button"
+        onClick={() => { prevStatus.current = null; void loadCase(c.id).then(() => setRole(null)); }}
+        className={`w-full text-left rounded-md px-2 py-1.5 text-sm ${current?.id === c.id ? "bg-brand-soft" : "hover:bg-surface-muted"}`}
+      >
+        <span className="font-medium">#{number(c.id)}</span>{" "}
+        <span className={statusBadge(c.status)}>{s.status[c.status]}</span>
+        <span className="block text-xs text-text-muted">
+          {new Date(c.created_at).toLocaleString(dateLocale, { dateStyle: "short", timeStyle: "short" })}
+        </span>
+      </button>
+    </li>
+  );
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <span className="section-kicker">{s.kicker}</span>
-          <h2 className="text-xl font-bold tracking-tight text-text">{model.title}</h2>
-          <p className="text-sm text-text-muted max-w-3xl">{s.intro}</p>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-text">{model.title}</h1>
+          {/* For the designer: how the view came about. The people using it do not need it. */}
+          <details className="mt-1 text-sm text-text-muted max-w-3xl">
+            <summary className="cursor-pointer select-none text-xs">{s.howBuilt}</summary>
+            <p className="mt-1">{s.intro}</p>
+          </details>
         </div>
         <button type="button" className="btn-brand" onClick={newCase} disabled={busy || !model.package_ready} data-testid="case-new">
           {s.newCase}
@@ -173,26 +204,29 @@ export function CaseWorkflow({ sessionId, strings: s, dateLocale }: Props) {
       )}
 
       <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)]">
-        <aside className="rounded-lg border border-border bg-surface p-3">
-          <h3 className="text-sm font-semibold mb-2">{s.cases}</h3>
-          {cases.length === 0 && <p className="text-sm text-text-muted">{s.noCases}</p>}
-          <ul className="flex flex-col gap-1">
-            {cases.map((c, i) => (
-              <li key={c.id}>
-                <button
-                  type="button"
-                  onClick={() => { prevStatus.current = null; void loadCase(c.id).then(() => setRole(null)); }}
-                  className={`w-full text-left rounded-md px-2 py-1.5 text-sm ${current?.id === c.id ? "bg-brand-soft" : "hover:bg-surface-muted"}`}
-                >
-                  <span className="font-medium">#{cases.length - i}</span>{" "}
-                  <span className={statusBadge(c.status)}>{s.status[c.status]}</span>
-                  <span className="block text-xs text-text-muted">
-                    {new Date(c.created_at).toLocaleString(dateLocale, { dateStyle: "short", timeStyle: "short" })}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
+        {/* On a phone the open case takes the screen; the list is one tap back. */}
+        <aside className={`rounded-lg border border-border bg-surface p-3 self-start ${current ? "hidden lg:block" : ""}`} data-testid="case-list">
+          <h2 className="text-sm font-semibold mb-1">
+            {s.yourCases}
+            {listRole && <span className="font-normal text-text-muted"> · {roleName(listRole)}</span>}
+          </h2>
+          {groups.mine.length === 0 ? (
+            <p className="text-xs text-text-muted mb-2">{s.noneWaiting}</p>
+          ) : (
+            <ul className="flex flex-col gap-1 mb-2" data-testid="case-list-mine">{groups.mine.map(caseButton)}</ul>
+          )}
+          {groups.open.length > 0 && (
+            <details open className="mt-2">
+              <summary className="cursor-pointer text-xs font-semibold text-text-secondary">{s.openCases} ({groups.open.length})</summary>
+              <ul className="flex flex-col gap-1 mt-1">{groups.open.map(caseButton)}</ul>
+            </details>
+          )}
+          {groups.done.length > 0 && (
+            <details className="mt-2">
+              <summary className="cursor-pointer text-xs font-semibold text-text-secondary">{s.doneCases} ({groups.done.length})</summary>
+              <ul className="flex flex-col gap-1 mt-1">{groups.done.map(caseButton)}</ul>
+            </details>
+          )}
         </aside>
 
         {current ? (
@@ -212,9 +246,10 @@ export function CaseWorkflow({ sessionId, strings: s, dateLocale }: Props) {
             act={act}
             reload={() => loadCase(current.id)}
             statusBadge={statusBadge}
+            onBack={() => { setCurrent(null); void loadCases(); }}
           />
         ) : (
-          <div className="rounded-lg border border-dashed border-border-strong p-8 text-center text-sm text-text-muted">
+          <div className="hidden lg:block rounded-lg border border-dashed border-border-strong p-8 text-center text-sm text-text-muted">
             {s.noCases}
           </div>
         )}
@@ -238,15 +273,31 @@ type ViewProps = {
   act: (fn: () => Promise<Response>) => Promise<Response | null>;
   reload: () => Promise<void>;
   statusBadge: (st: Case["status"]) => string;
+  onBack?: () => void;
+  // The value of the field the reviewer is on, highlighted in the source.
+  focus?: unknown;
+  setFocus?: (v: unknown) => void;
+  // An input file opened beside the review.
+  preview?: string | null;
+  setPreview?: (name: string | null) => void;
 };
 
-function CaseView(p: ViewProps) {
+function CaseView(props: ViewProps) {
+  const [focus, setFocus] = useState<unknown>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const p = { ...props, focus, setFocus, preview, setPreview };
   const { caseData: c, shaped, s, role } = p;
   const task = currentTask(shaped, c.status, c.steps_done);
   const mine = task && task.lane === role;
+  const inputScreen = !!mine && shaped.inputTasks.includes(task as ProcessNode);
 
   return (
     <section className="flex flex-col gap-4 min-w-0">
+      {p.onBack && (
+        <button type="button" className="lg:hidden self-start text-sm text-brand-strong underline" onClick={p.onBack}>
+          ← {s.backToList}
+        </button>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm text-text-muted">{s.role}:</span>
         {shaped.roles.map((l) => {
@@ -272,19 +323,21 @@ function CaseView(p: ViewProps) {
         </span>
       </div>
 
-      <ol className="flex gap-0 overflow-x-auto pb-1" aria-label="steps">
+      {/* The person giving the input on a phone needs their task, not the whole process. */}
+      <ol className={`${inputScreen ? "hidden sm:flex" : "flex"} gap-0 overflow-x-auto pb-1`} aria-label="steps">
         {shaped.steps.map((n) => {
           const st = stepState(shaped, c.status, n, c.steps_done);
           return (
             <li
               key={n.id}
-              className={`min-w-[130px] flex-1 border-t-4 px-2.5 py-2 text-xs ${st === "current" ? "bg-surface rounded-b-md" : ""}`}
+              title={n.name}
+              className={`min-w-[104px] flex-1 border-t-4 px-2 py-1.5 text-xs ${st === "current" ? "bg-surface rounded-b-md" : ""}`}
               style={{ borderTopColor: st === "todo" ? "var(--color-border)" : st === "done" ? "var(--color-success-text)" : p.laneColor(n.lane) }}
             >
-              <span className="block uppercase tracking-wide text-[10px]" style={{ color: p.laneColor(n.lane) }}>
+              <span className="block uppercase tracking-wide text-[10px] truncate" style={{ color: p.laneColor(n.lane) }}>
                 {p.roleName(n.lane)}
               </span>
-              <span className="font-semibold text-text">{n.name}</span>
+              <span className="font-semibold text-text leading-tight">{shortStepName(n.name, 28)}</span>
             </li>
           );
         })}
@@ -293,11 +346,7 @@ function CaseView(p: ViewProps) {
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
         <div className="rounded-lg border border-border bg-surface p-4 min-w-0">
           {c.status === "running" ? (
-            <div data-testid="case-running">
-              <h3 className="font-semibold"><span className="mr-2 inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-border border-t-brand align-[-2px]" />{s.aiRunning}</h3>
-              <p className="text-sm text-text-muted mt-1">{s.aiRunningHint}{c.run_phase ? ` (${c.run_phase})` : ""}</p>
-              <ul className="mt-3 text-sm list-disc pl-5">{shaped.aiSteps.map((n) => <li key={n.id}>{n.name}</li>)}</ul>
-            </div>
+            <RunningView {...p} />
           ) : c.status === "approved" || c.status === "rejected" || c.status === "completed" ? (
             <DoneView {...p} />
           ) : !mine ? (
@@ -318,9 +367,73 @@ function CaseView(p: ViewProps) {
             <ReviewView {...p} />
           )}
         </div>
-        <SourceView {...p} />
+        <div className={inputScreen ? "hidden xl:block" : ""}>
+          <SourceView {...p} />
+        </div>
       </div>
     </section>
+  );
+}
+
+/** The AI step while it runs: the run's phase, time since sending, and its live log. */
+function RunningView(p: ViewProps) {
+  const { caseData: c, s, shaped } = p;
+  const [lines, setLines] = useState<string[]>([]);
+  const [now, setNow] = useState(() => Date.now());
+  const sentAt = [...c.events].reverse().find((e) => e.action === "submit")?.at;
+  const sender = shaped.inputTasks.some((n) => n.lane === p.role);
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  // The run's own log, as the PoC tab follows it; the case settles by polling.
+  useEffect(() => {
+    if (!c.run_id) return;
+    const url = p.base.replace(/\/cases\/[^/]+$/, `/runs/${encodeURIComponent(c.run_id)}/stream`);
+    const es = new EventSource(url);
+    es.onmessage = (e) => {
+      try {
+        const d = JSON.parse(e.data) as { log?: string; done?: boolean };
+        if (typeof d.log === "string") setLines((prev) => [...prev.slice(-200), d.log as string]);
+        if (d.done) { es.close(); void p.reload(); }
+      } catch {
+        /* a frame that is not JSON is skipped */
+      }
+    };
+    es.onerror = () => es.close();
+    return () => es.close();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [c.run_id]);
+
+  const tail = logTail(lines);
+  return (
+    <div data-testid="case-running" className="flex flex-col gap-3">
+      {sender && (
+        <div className="rounded-md border border-success-border bg-success-bg px-3 py-3" data-testid="case-sent">
+          <p className="font-semibold text-success-text">✓ {s.sentTitle}</p>
+          <p className="text-sm text-text-secondary">{s.sentHint}</p>
+        </div>
+      )}
+      <h3 className="font-semibold">
+        <span className="mr-2 inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-border border-t-brand align-[-2px]" />
+        {s.aiRunning}
+      </h3>
+      <p className="text-sm text-text-muted">
+        {c.run_phase === "pending" || (!c.run_phase && lines.length === 0) ? s.phasePending : s.phaseRunning}
+        {sentAt ? ` · ${elapsed(sentAt, now)}` : ""}
+      </p>
+      <ul className="text-sm list-disc pl-5">{shaped.aiSteps.map((n) => <li key={n.id}>{n.name}</li>)}</ul>
+      {tail.length > 0 && (
+        <div>
+          <h4 className="text-xs font-semibold text-text-secondary mb-1">{s.runLog}</h4>
+          <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-app p-2 text-[11px] leading-snug" data-testid="case-log">
+            {tail.join("\n")}
+          </pre>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -335,8 +448,18 @@ function InputView(p: ViewProps & { task: ProcessNode }) {
   const returnedHere = c.status === "returned" && (c.return_to ?? first?.id) === p.task.id;
   const [uploading, setUploading] = useState(false);
   const [recorder, setRecorder] = useState<MediaRecorder | null>(null);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [tick, setTick] = useState(0);
+  const [take, setTake] = useState<{ file: File; url: string } | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const audio = p.task.outputs.some(isAudioInput);
+
+  useEffect(() => {
+    if (!startedAt) return;
+    const t = setInterval(() => setTick(Date.now()), 500);
+    return () => clearInterval(t);
+  }, [startedAt]);
+  useEffect(() => () => { if (take) URL.revokeObjectURL(take.url); }, [take]);
 
   async function upload(files: File[]) {
     setUploading(true);
@@ -361,11 +484,16 @@ function InputView(p: ViewProps & { task: ProcessNode }) {
         const type = rec.mimeType || "audio/webm";
         const ext = type.includes("mp4") ? "m4a" : type.includes("ogg") ? "ogg" : "webm";
         const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
-        void upload([new File(chunks, `recording-${stamp}.${ext}`, { type })]);
+        // Listened to first; uploaded only when the person keeps it.
+        const file = new File(chunks, `recording-${stamp}.${ext}`, { type });
+        setTake({ file, url: URL.createObjectURL(file) });
         setRecorder(null);
+        setStartedAt(null);
       };
       rec.start();
       setRecorder(rec);
+      setStartedAt(Date.now());
+      setTake(null);
     } catch {
       alert(s.micError);
     }
@@ -413,13 +541,29 @@ function InputView(p: ViewProps & { task: ProcessNode }) {
             </li>
           ))}
         </ul>
+        {take && (
+          <div className="mb-2 flex flex-col gap-2 rounded-md border border-border bg-app p-3" data-testid="case-take">
+            <audio controls src={take.url} className="w-full" />
+            <div className="flex flex-wrap gap-2">
+              <button type="button" className="btn-brand" onClick={() => { const f = take.file; setTake(null); void upload([f]); }}>
+                {s.useRecording}
+              </button>
+              <button type="button" className="btn-secondary" onClick={() => { setTake(null); void record(); }}>
+                {s.recordAgain}
+              </button>
+            </div>
+          </div>
+        )}
         <div className="flex flex-wrap gap-2">
-          {audio && (recorder ? (
-            <button type="button" className="btn-secondary text-danger-text" onClick={() => recorder.stop()}>
-              <span className="h-2.5 w-2.5 rounded-full bg-danger-text animate-pulse" /> {s.stop}
+          {audio && !take && (recorder ? (
+            <button type="button" className="btn-secondary w-full sm:w-auto py-4 sm:py-2 text-base sm:text-sm text-danger-text" onClick={() => recorder.stop()} data-testid="case-stop">
+              <span className="h-3 w-3 rounded-full bg-danger-text animate-pulse" /> {s.stop}
+              {startedAt ? ` · ${elapsed(new Date(startedAt).toISOString(), tick || Date.now())}` : ""}
             </button>
           ) : (
-            <button type="button" className="btn-secondary" onClick={record} disabled={uploading}>{s.record}</button>
+            <button type="button" className="btn-brand w-full sm:w-auto py-4 sm:py-2 text-base sm:text-sm" onClick={record} disabled={uploading} data-testid="case-record">
+              ● {mine.length ? s.recordAgain : s.recordBig}
+            </button>
           ))}
           <button type="button" className="btn-secondary" onClick={() => fileRef.current?.click()} disabled={uploading || !!recorder}>
             {uploading ? s.uploading : s.upload}
@@ -442,9 +586,9 @@ function InputView(p: ViewProps & { task: ProcessNode }) {
       <div>
         <button
           type="button"
-          className="btn-brand"
+          className="btn-brand w-full sm:w-auto py-3 sm:py-2"
           data-testid="case-submit"
-          disabled={p.busy || uploading || !!recorder || mine.length === 0}
+          disabled={p.busy || uploading || !!recorder || !!take || mine.length === 0}
           title={mine.length === 0 ? s.inputMissing : undefined}
           onClick={async () => {
             const body = JSON.stringify({ task: p.task.id, role: p.roleName(p.task.lane), note });
@@ -500,7 +644,7 @@ function ReviewView(p: ViewProps) {
           </p>
         ))}
       {doc ? (
-        <DocumentEditor rec={rec as CaseRecord} original={original as CaseRecord} setRec={setRec} s={s} />
+        <DocumentEditor rec={rec as CaseRecord} original={original as CaseRecord} setRec={setRec} s={s} inputs={c.inputs.map((f) => f.name)} onCite={p.setPreview} />
       ) : Array.isArray(rec) ? (
         <div className="flex flex-col gap-4">
           {rec.map((item, i) => (
@@ -512,20 +656,23 @@ function ReviewView(p: ViewProps) {
                 original={((original as CaseRecord[])[i] ?? {}) as CaseRecord}
                 setRec={(next) => setRec(rec.map((x, j) => (j === i ? next : x)))}
                 s={s}
+                onFocusField={p.setFocus}
               />
             </fieldset>
           ))}
         </div>
       ) : (
-        <RecordForm spec={model.spec} rec={rec} original={original as CaseRecord} setRec={setRec} s={s} />
+        <RecordForm spec={model.spec} rec={rec} original={original as CaseRecord} setRec={setRec} s={s} onFocusField={p.setFocus} />
       )}
+      {/* Kept in view however long the form is: the decision is what this screen is for. */}
+      <div className="sticky bottom-0 z-10 -mx-4 -mb-4 mt-2 flex flex-col gap-2 border-t border-border bg-surface/95 px-4 py-3 backdrop-blur-sm rounded-b-lg" data-testid="case-actions">
       <div className="flex flex-wrap gap-2">
         <button type="button" className="btn-brand" data-testid="case-approve" disabled={p.busy || bad > 0} onClick={() => send("approve")}>
           {s.approve}
         </button>
         <button type="button" className="btn-secondary" onClick={() => { setAsk("return"); setComment(""); }}>{s.returnForFix}</button>
         <button type="button" className="btn-secondary text-danger-text" onClick={() => { setAsk("reject"); setComment(""); }}>{s.reject}</button>
-        <button type="button" className="btn-ghost" onClick={() => setRec(structuredClone(original))}>{s.restoreAll}</button>
+        <button type="button" className="ml-auto self-center text-xs text-text-muted underline" onClick={() => setRec(structuredClone(original))}>{s.restoreAll}</button>
       </div>
       {ask && (
         <div className="rounded-md border border-border-strong p-3 flex flex-col gap-2">
@@ -548,6 +695,7 @@ function ReviewView(p: ViewProps) {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
@@ -556,37 +704,69 @@ type Section = { id?: string; title?: string; text?: string };
 const docProblems = (rec: CaseRecord) =>
   ((rec.sections as Section[]) ?? []).filter((x) => !String(x.text ?? "").trim()).length;
 
-function DocumentEditor({ rec, original, setRec, s }: { rec: CaseRecord; original: CaseRecord; setRec: (r: CaseRecord) => void; s: CaseStrings }) {
+/**
+ * Report markdown rendered safely, with each `[file]` the case has turned into a
+ * button that opens that source beside the report.
+ */
+function MarkdownWithSources({ text, inputs, onCite }: { text: string; inputs: string[]; onCite?: (name: string) => void }) {
+  let html = renderMarkdown(text);
+  for (const name of citedInputs(text, inputs)) {
+    const shown = name.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    html = html.split(`[${shown}]`).join(`<button type="button" data-src="${shown}" class="case-cite">[${shown}]</button>`);
+  }
+  return (
+    <div
+      className="case-md text-sm leading-relaxed"
+      onClick={(e) => {
+        const src = (e.target as HTMLElement).closest("[data-src]")?.getAttribute("data-src");
+        if (src && onCite) onCite(src);
+      }}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+}
+
+function DocumentEditor({ rec, original, setRec, s, inputs, onCite }: { rec: CaseRecord; original: CaseRecord; setRec: (r: CaseRecord) => void; s: CaseStrings; inputs: string[]; onCite?: (name: string) => void }) {
   const sections = (rec.sections as Section[]) ?? [];
   const before = (original.sections as Section[]) ?? [];
+  const [editing, setEditing] = useState<Set<number>>(new Set());
+  const toggle = (i: number) => setEditing((prev) => { const n = new Set(prev); if (n.has(i)) n.delete(i); else n.add(i); return n; });
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
       {typeof rec.title === "string" && <h4 className="text-lg font-bold">{rec.title}</h4>}
       {sections.map((sec, i) => {
         const edited = (before[i]?.text ?? "") !== (sec.text ?? "");
+        const open = editing.has(i);
         return (
-          <label key={sec.id ?? i} className="block">
-            <span className="field-label flex items-center gap-2">
-              {sec.title ?? sec.id}
+          <section key={sec.id ?? i} className="rounded-md border border-border p-3" data-testid={`case-section-${i}`}>
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <h5 className="font-semibold">{sec.title ?? sec.id}</h5>
               {edited && <span className="badge-info">{s.edited}</span>}
               {!String(sec.text ?? "").trim() && <span className="text-danger-text text-xs">{s.required}</span>}
-            </span>
-            <textarea
-              className="input-field font-mono text-xs min-h-28"
-              value={sec.text ?? ""}
-              onChange={(e) => {
-                const next = sections.map((x, j) => (j === i ? { ...x, text: e.target.value } : x));
-                setRec({ ...rec, sections: next });
-              }}
-            />
-          </label>
+              <button type="button" className="ml-auto text-xs underline text-brand-strong" onClick={() => toggle(i)}>
+                {open ? s.preview : s.edit}
+              </button>
+            </div>
+            {open ? (
+              <textarea
+                className="input-field font-mono text-xs min-h-40"
+                value={sec.text ?? ""}
+                onChange={(e) => {
+                  const next = sections.map((x, j) => (j === i ? { ...x, text: e.target.value } : x));
+                  setRec({ ...rec, sections: next });
+                }}
+              />
+            ) : (
+              <MarkdownWithSources text={sec.text ?? ""} inputs={inputs} onCite={onCite} />
+            )}
+          </section>
         );
       })}
     </div>
   );
 }
 
-function RecordForm({ spec, rec, original, setRec, s }: { spec: OutputSpec; rec: CaseRecord; original: CaseRecord; setRec: (r: CaseRecord) => void; s: CaseStrings }) {
+function RecordForm({ spec, rec, original, setRec, s, onFocusField }: { spec: OutputSpec; rec: CaseRecord; original: CaseRecord; setRec: (r: CaseRecord) => void; s: CaseStrings; onFocusField?: (v: unknown) => void }) {
   const unc = uncertainField(spec);
   const uncertain = new Set(unc ? ((original[unc] as string[]) ?? []) : []);
   return (
@@ -599,6 +779,8 @@ function RecordForm({ spec, rec, original, setRec, s }: { spec: OutputSpec; rec:
         const common = {
           id: `case-f-${f}`,
           "data-testid": `case-field-${f}`,
+          // The AI's value is what was taken from the source, so that is what to find there.
+          onFocus: () => onFocusField?.(original[f]),
           className: `input-field ${problem ? "border-danger-text" : edited ? "border-brand" : uncertain.has(f) ? "border-warning-text" : ""}`,
         };
         const change = (raw: string) => setRec({ ...rec, [f]: parseInput(spec, f, raw) });
@@ -794,7 +976,9 @@ function DoneView(p: ViewProps) {
     <div className="flex flex-col gap-3" data-testid="case-done">
       <h3 className="font-semibold">{approved ? s.approvedTitle : s.completedTitle}</h3>
       {doc ? (
-        <pre className="max-h-[520px] overflow-auto whitespace-pre-wrap rounded-md border border-border bg-app p-3 text-xs">{toMarkdown(rec)}</pre>
+        <div className="max-h-[640px] overflow-auto rounded-md border border-border bg-app p-3">
+          <MarkdownWithSources text={toMarkdown(rec)} inputs={c.inputs.map((f) => f.name)} onCite={p.setPreview} />
+        </div>
       ) : (
         list.map((r, i) => (
           <dl key={i} className={`grid grid-cols-[minmax(0,1fr)_minmax(0,3fr)] gap-x-3 gap-y-1.5 text-sm ${list.length > 1 ? "rounded-md border border-border p-3" : ""}`}>
@@ -831,8 +1015,26 @@ function SourceView(p: ViewProps) {
   const validation = c.result?.validation;
   const rec = c.record;
   const bad = rec ? (isDocument(rec) ? docProblems(rec as CaseRecord) : problemCount(model.spec, rec)) : 0;
+  const transcript = c.result?.transcript ?? "";
+  const hits = findInText(transcript, p.focus);
+  const preview = p.preview && c.inputs.some((f) => f.name === p.preview) ? p.preview : null;
+  const previewUrl = preview ? `${base}/inputs/${encodeURIComponent(preview)}` : "";
   return (
-    <aside className="flex flex-col gap-4 min-w-0">
+    // Stays in view beside a long form, scrolling on its own.
+    <aside className="flex flex-col gap-4 min-w-0 xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto">
+      {preview && (
+        <div className="rounded-lg border border-border bg-surface p-3" data-testid="case-preview">
+          <div className="mb-2 flex items-center gap-2">
+            <h3 className="font-semibold text-sm">{s.sourcePreview}: <span className="font-mono text-xs">{preview}</span></h3>
+            <button type="button" className="ml-auto text-xs underline" onClick={() => p.setPreview?.(null)}>{s.closePreview}</button>
+          </div>
+          {/\.pdf$/i.test(preview) ? (
+            <iframe title={preview} src={previewUrl} className="h-[420px] w-full rounded border border-border" />
+          ) : (
+            <a className="underline text-brand-strong text-sm" href={previewUrl} target="_blank" rel="noreferrer">{preview}</a>
+          )}
+        </div>
+      )}
       {c.inputs.length > 0 && c.status !== "draft" && (
         <div className="rounded-lg border border-border bg-surface p-4">
           <h3 className="font-semibold mb-2">{s.source}</h3>
@@ -849,10 +1051,18 @@ function SourceView(p: ViewProps) {
               </li>
             ))}
           </ul>
-          {c.result?.transcript && (
+          {transcript && (
             <>
               <h4 className="text-sm font-semibold mt-3 mb-1">{s.transcript}</h4>
-              <p className="whitespace-pre-wrap rounded-md border border-border bg-app p-2 text-sm">{c.result.transcript}</p>
+              <p className="whitespace-pre-wrap rounded-md border border-border bg-app p-2 text-sm" data-testid="case-transcript">
+                {hits.length === 0
+                  ? transcript
+                  : hits.flatMap(([a, b], i) => [
+                      transcript.slice(i === 0 ? 0 : hits[i - 1][1], a),
+                      <mark key={a} className="rounded bg-warning-bg px-0.5 text-text">{transcript.slice(a, b)}</mark>,
+                    ]).concat(transcript.slice(hits[hits.length - 1][1]))}
+              </p>
+              {c.status === "review" && <p className="mt-1 text-xs text-text-muted">{s.highlightHint}</p>}
             </>
           )}
         </div>
