@@ -18,7 +18,9 @@ import pytest
 from helpers import requires_postgres
 from wizard_api.services import case_service, poc_service, session_service
 from wizard_api.services.sandbox_runner import (
+    CASE_KIND,
     CASE_LABEL,
+    RUN_KIND_LABEL,
     SandboxRunner,
     render_job_manifest,
 )
@@ -349,6 +351,9 @@ def test_a_case_run_fetches_the_package_with_that_cases_input():
     assert f'/sessions/{SESSION}/poc?case={CASE}"' in _fetch_command(manifest)
     assert manifest["metadata"]["labels"][CASE_LABEL] == CASE
     assert manifest["spec"]["template"]["metadata"]["labels"][CASE_LABEL] == CASE
+    # A case run is its own kind, so it never opens the deployable download.
+    assert manifest["metadata"]["labels"][RUN_KIND_LABEL] == CASE_KIND
+    assert manifest["spec"]["template"]["metadata"]["labels"][RUN_KIND_LABEL] == CASE_KIND
 
 
 def test_a_plain_run_fetches_the_package_as_before():
@@ -356,6 +361,7 @@ def test_a_plain_run_fetches_the_package_as_before():
 
     assert "?case=" not in _fetch_command(manifest)
     assert CASE_LABEL not in manifest["metadata"]["labels"]
+    assert RUN_KIND_LABEL not in manifest["metadata"]["labels"]
 
 
 def test_a_case_run_keeps_the_rest_of_the_reviewed_job():
@@ -400,8 +406,9 @@ def test_the_whole_log_of_a_finished_run_is_read_from_its_pod():
 # ---------------------------------------------------------------------------
 
 
-def _session_with_package(client, db_session):
+def _session_with_package(client, db_session, gate_2="approved"):
     created = client.post("/sessions", json={"user_id": "case-user", "title": "Cases"}).json()
+    client.patch(f"/sessions/{created['id']}", json={"gate_statuses": {"gate_2": gate_2}})
     out = session_service.get_session(db_session, uuid.UUID(created["id"])).output_dir
     poc = os.path.join(out, "poc")
     os.makedirs(os.path.join(poc, "sample_input"), exist_ok=True)
@@ -720,3 +727,21 @@ def test_an_empty_list_is_a_value_given_not_a_missing_one():
     assert case_service.record_problems({"answer": "No.", "citations": None}, spec) == [
         "citations is required"
     ]
+
+
+@requires_postgres
+def test_a_case_is_not_run_before_gate_2_is_approved(client, db_session, monkeypatch):
+    sid = _session_with_package(client, db_session, gate_2="pending")
+    case = client.post(f"/sessions/{sid}/cases").json()
+    client.post(
+        f"/sessions/{sid}/cases/{case['id']}/inputs",
+        files={"file": ("report.wav", b"RIFF....WAVE", "audio/wav")},
+    )
+    started = []
+    monkeypatch.setattr(SandboxRunner, "create_run", lambda self, *a, **k: started.append(1) or "r")
+
+    res = client.post(f"/sessions/{sid}/cases/{case['id']}/submit", json={"role": "Technician"})
+
+    assert res.status_code == 409
+    assert res.json()["detail"]["error"] == "gate_not_approved"
+    assert started == []

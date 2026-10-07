@@ -816,7 +816,9 @@ async def stream_poc_run(
             if status is None:
                 status = await asyncio.to_thread(runner.final_status, run_id)
             kind = await asyncio.to_thread(runner.run_kind, run_id)
-            if status.phase == "succeeded" and kind != sandbox_runner.CHECK_KIND:
+            # Only a run of the package itself: a preflight calls no model, and a
+            # case run ran on one case's inputs, so neither proves the package.
+            if status.phase == "succeeded" and kind is None:
                 # Recorded rather than re-queried later: a finished Job is
                 # reaped an hour after it ends (ttlSecondsAfterFinished), and
                 # the deployable download must still know the run happened.

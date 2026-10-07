@@ -260,6 +260,17 @@ def submit_case(
 
     session = _session(db, session_id)
     _case(session.output_dir, case_id)
+    # The same gate as a run of the package (create_poc_run): a case runs the
+    # generated code, which only an approved blueprint may produce.
+    if session.gate_statuses.get("gate_2") != "approved":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "gate_not_approved",
+                "gate": "gate_2",
+                "message": "approve Gate 2 before running a case",
+            },
+        )
     poc = os.path.join(session.output_dir, "poc")
     problems = poc_service.package_problems(poc) if os.path.isdir(poc) else ["no PoC package"]
     if problems:

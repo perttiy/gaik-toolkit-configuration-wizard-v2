@@ -101,6 +101,10 @@ SESSION_LABEL = "wizard-v2/session-id"
 RUN_KIND_LABEL = "wizard-v2/run-kind"
 CHECK_KIND = "check"
 
+#: Run kind of a case run: the package on one case's inputs, not on its own
+#: sample input. Like the preflight, never the run that opens the deployable.
+CASE_KIND = "case"
+
 #: Label naming the case a run belongs to. A case run fetches the package with
 #: that case's own inputs in place of ``sample_input/`` (case_service).
 CASE_LABEL = "wizard-v2/case-id"
@@ -215,7 +219,9 @@ def _make_case_run(manifest: dict[str, Any], case_id: str) -> None:
     if not re.fullmatch(r"[0-9a-f-]{36}", case_id):
         raise ValueError(f"not a case id: {case_id!r}")
     for meta in (manifest["metadata"], manifest["spec"]["template"].setdefault("metadata", {})):
-        meta.setdefault("labels", {})[CASE_LABEL] = case_id
+        labels = meta.setdefault("labels", {})
+        labels[CASE_LABEL] = case_id
+        labels[RUN_KIND_LABEL] = CASE_KIND
     rewritten = 0
     for container in manifest["spec"]["template"]["spec"].get("initContainers") or []:
         command = container.get("command") or []
@@ -422,7 +428,7 @@ class SandboxRunner:
         self.status(run_id, session_id=session_id)
 
     def run_kind(self, run_id: str) -> str | None:
-        """``check`` for a preflight, None for a real run."""
+        """``check`` for a preflight, ``case`` for a case run, None for a run of the package."""
         self._require_config()
         self._load_clients()
         metadata = getattr(self._read_job(run_id), "metadata", None)
