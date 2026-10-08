@@ -143,7 +143,8 @@ def list_cases(output_dir: str) -> list[dict[str, Any]]:
             case = get_case(output_dir, entry.name)
         except CaseNotFoundError:
             continue
-        cases.append({k: case[k] for k in ("id", "created_at", "status", "round")})
+        # steps_done says whose turn a draft is, so the list can put a person's own first.
+        cases.append({k: case[k] for k in ("id", "created_at", "status", "round", "steps_done")})
     return sorted(cases, key=lambda c: c["created_at"], reverse=True)
 
 
