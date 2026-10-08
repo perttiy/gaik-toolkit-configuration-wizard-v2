@@ -266,6 +266,8 @@ export function WorkspacePanel({
   // run has succeeded; null until then. Shown as the result, above the log.
   const [runOutput, setRunOutput] = useState<PocRunOutput | null>(null);
   const logEndRef = useRef<HTMLDivElement | null>(null);
+  /** The run the tab follows now; an earlier run's output arriving late is dropped. */
+  const activeRunRef = useRef<string | null>(null);
   const [pocFiles, setPocFiles] = useState<string[]>([]);
   // `ready`/`problems` come from the api's package check; see lib/poc-package-state.
   const [pocReady, setPocReady] = useState(false);
@@ -447,7 +449,11 @@ export function WorkspacePanel({
         { cache: "no-store" },
       );
       if (!res.ok) return;
-      setRunOutput(pocRunOutput(await res.json()));
+      const body = await res.json();
+      // The button re-enables on the done frame, before this fetch resolves: a
+      // run started meanwhile must not show the previous run's result.
+      if (activeRunRef.current !== runId) return;
+      setRunOutput(pocRunOutput(body));
     } catch {
       // The log stays; nothing else to say.
     }
@@ -459,6 +465,7 @@ export function WorkspacePanel({
     setRunStarted(false);
     setRunLogs([]);
     setRunOutput(null);
+    activeRunRef.current = null;
 
     let runId: string;
     // Local, not the state: the state read in this closure is the value from
@@ -474,6 +481,7 @@ export function WorkspacePanel({
         return;
       }
       runId = body.run_id;
+      activeRunRef.current = runId;
       started = true;
       setRunStarted(true);
     } catch {

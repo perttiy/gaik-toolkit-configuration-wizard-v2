@@ -767,8 +767,8 @@ def get_poc_run_output(session_id: uuid.UUID, run_id: str, db: Session = Depends
     except sandbox_runner.RunNotFoundError as exc:
         raise HTTPException(status_code=404, detail="run not found") from exc
     spec = output_spec(db, session) if session.output_dir else None
-    result = case_service.parse_run_output(log, spec, run_id=run_id)
     files = case_service.output_files(log, run_id)
+    result = case_service.parse_run_output(log, spec, run_id=run_id, files=files)
     return {
         "run_id": run_id,
         "record": result["record"],

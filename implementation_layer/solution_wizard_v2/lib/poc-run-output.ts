@@ -8,6 +8,8 @@
  * the raw log only, with the result somewhere in it.
  */
 
+import { humanize as fieldLabel, show as valueText } from "./case-process";
+
 export type RunRecord = Record<string, unknown>;
 export type RunOutputFile = { name: string; body: string };
 
@@ -58,22 +60,8 @@ export function pocRunOutput(raw: unknown): PocRunOutput {
 /** The run printed at least one output file. */
 export const hasRunOutput = (o: PocRunOutput): boolean => o.files.length > 0;
 
-/** `incident_location` reads as "Incident location". */
-export function fieldLabel(field: string): string {
-  const words = field.replace(/[_-]+/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").trim();
-  return words ? words[0].toUpperCase() + words.slice(1).toLowerCase() : field;
-}
-
-/** A value as one readable string: lists of plain values on one line, nested data as JSON. */
-export function valueText(value: unknown): string {
-  if (value === null || value === undefined) return "";
-  if (typeof value === "string") return value;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  if (Array.isArray(value) && value.every((v) => v === null || typeof v !== "object")) {
-    return value.map((v) => valueText(v)).join(", ");
-  }
-  return JSON.stringify(value, null, 2);
-}
+/** The same labelling and value text as the case view (`lib/case-process`). */
+export { humanize as fieldLabel, show as valueText } from "./case-process";
 
 /** The record's fields in the order the run wrote them, each with its value as text. */
 export function recordRows(record: RunRecord): { field: string; label: string; value: string }[] {

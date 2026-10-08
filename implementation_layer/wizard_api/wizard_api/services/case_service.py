@@ -519,7 +519,10 @@ def output_files(log: str, run_id: str | None = None) -> dict[str, str]:
 
 
 def parse_run_output(
-    log: str, spec: dict[str, Any] | None, run_id: str | None = None
+    log: str,
+    spec: dict[str, Any] | None,
+    run_id: str | None = None,
+    files: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """The files the run printed between the output markers, and which is which.
 
@@ -527,9 +530,10 @@ def parse_run_output(
     between two markers (sandbox-job.yaml). The record is the JSON whose keys
     are the output fields; a JSON with ``passed`` is the grounding check; a
     ``*transcript*.txt`` is the transcript. ``output_files`` says which marker
-    lines count (#293).
+    lines count (#293); a caller that already read them passes them in.
     """
-    files = output_files(log, run_id)
+    if files is None:
+        files = output_files(log, run_id)
     fields = set((normalize_spec(spec) or {}).get("fields") or [])
     record = validation = None
     transcript = document = ""
