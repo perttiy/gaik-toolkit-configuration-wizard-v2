@@ -747,3 +747,12 @@ body {
   font-weight: 700;
   background: rgba(17, 27, 40, 0.04);
 }
+
+/* Report sections in the case view: rendered markdown, cited sources as buttons. */
+.case-md h1, .case-md h2, .case-md h3 { font-weight: 600; margin: 0.6em 0 0.3em; }
+.case-md p { margin: 0.4em 0; }
+.case-md ul, .case-md ol { padding-left: 1.25rem; margin: 0.4em 0; list-style: revert; }
+.case-md table { border-collapse: collapse; font-size: 0.8rem; margin: 0.5em 0; display: block; overflow-x: auto; }
+.case-md th, .case-md td { border: 1px solid var(--color-border); padding: 0.25rem 0.45rem; vertical-align: top; }
+.case-md th { background: var(--color-surface-muted); }
+.case-md .case-cite { color: var(--color-brand-strong); text-decoration: underline; font-size: 0.85em; }

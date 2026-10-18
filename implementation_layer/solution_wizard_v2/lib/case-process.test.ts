@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  citedInputs,
+  elapsed,
+  findInText,
+  groupCases,
+  logTail,
+  shortStepName,
   type OutputSpec,
   type Process,
   currentTask,
@@ -8,6 +14,7 @@ import {
   isAudioInput,
   isDocument,
   isLastInput,
+  phoneLayout,
   isTable,
   parseInput,
   problemCount,
@@ -110,6 +117,23 @@ describe("the process from the BPMN", () => {
     for (const name of ["Invoice Pdf", "InvoicePdf", "Laskun PDF", "Puhelinlasku PDF", "Puheenjohtajan muistio", "Puhelu loki"]) {
       expect(isAudioInput(name), name).toBe(false);
     }
+  });
+});
+
+describe("what a phone folds away", () => {
+  it("drops the step bar for the person at their own task, and keeps it elsewhere", () => {
+    expect(phoneLayout("draft", "input").stepBar).toBe(false);
+    expect(phoneLayout("review", "review").stepBar).toBe(false);
+    expect(phoneLayout("running", "other").stepBar).toBe(true);
+    expect(phoneLayout("approved", "other").stepBar).toBe(true);
+  });
+
+  it("offers the source as a sheet once there is a source to show", () => {
+    expect(phoneLayout("draft", "input").sourceSheet).toBe(false);
+    expect(phoneLayout("draft", "other").sourceSheet).toBe(false);
+    expect(phoneLayout("review", "review").sourceSheet).toBe(true);
+    expect(phoneLayout("running", "other").sourceSheet).toBe(true);
+    expect(phoneLayout("completed", "other").sourceSheet).toBe(true);
   });
 });
 
@@ -268,5 +292,52 @@ describe("a required list", () => {
     const spec: OutputSpec = { fields: ["citations"], required_fields: ["citations"] };
     expect(fieldProblem(spec, { citations: [] }, "citations")).toBeNull();
     expect(fieldProblem(spec, { citations: null }, "citations")?.kind).toBe("required");
+  });
+});
+
+describe("presentation helpers", () => {
+  it("shortens a long task name at a word, and keeps a short one", () => {
+    expect(shortStepName("Record and upload voice fault report")).toBe("Record and upload voice fault…");
+    expect(shortStepName("Review ticket")).toBe("Review ticket");
+  });
+
+  it("puts the cases waiting for the role first, then the open ones, then the finished", () => {
+    const shaped = shapeProcess(PROCESS);
+    const g = groupCases(
+      [
+        { id: "a", created_at: "", status: "review", round: 1 },
+        { id: "b", created_at: "", status: "draft", round: 1 },
+        { id: "c", created_at: "", status: "approved", round: 1 },
+        { id: "d", created_at: "", status: "running", round: 1 },
+      ],
+      shaped,
+      "L_rev",
+    );
+    expect(g.mine.map((c) => c.id)).toEqual(["a"]);
+    expect(g.open.map((c) => c.id)).toEqual(["b", "d"]);
+    expect(g.done.map((c) => c.id)).toEqual(["c"]);
+  });
+
+  it("finds a value in the transcript, ignoring case", () => {
+    expect(findInText("Pumppu P17 vuotaa, pumppu P17 on pysäytetty", "pumppu p17")).toEqual([
+      [0, 10],
+      [19, 29],
+    ]);
+    expect(findInText("x", "a")).toEqual([]);
+  });
+
+  it("links only the cited files the case actually has", () => {
+    expect(citedInputs("Spend EUR 405,000 [kpis.xlsx], see [audit.pdf] and [other.pdf]", ["kpis.xlsx", "audit.pdf"])).toEqual([
+      "kpis.xlsx",
+      "audit.pdf",
+    ]);
+  });
+
+  it("shows the end of the run's log without the output markers", () => {
+    expect(logTail(["a", "", "b", "=== POC OUTPUT BEGIN ===", "--- output/x.json ---"], 5)).toEqual(["a", "b"]);
+  });
+
+  it("counts minutes and seconds since the case was sent", () => {
+    expect(elapsed("2026-10-07T10:00:00Z", Date.parse("2026-10-07T10:01:05Z"))).toBe("1:05");
   });
 });
