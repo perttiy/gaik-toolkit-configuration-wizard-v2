@@ -144,6 +144,20 @@ def test_requirements_txt_needs_the_provider_api_release(tmp_path):
     assert [line for line in req if line.startswith("gaik")] == ["gaik>=0.8.0"]
 
 
+def test_requirements_txt_report_writer_needs_the_release_that_ships_it(tmp_path):
+    """gaik 0.8.0/0.8.1 have no report_writer; a >=0.8.0 floor would install and then fail at import."""
+    bp = _load_example("incident_reporting_blueprint.json")
+    bp.components.selected_modules = [{"id": "report_writer", "name": "ReportWriter"}]
+    bp.components.selected_building_blocks = []
+    _write_requirements_txt(bp, tmp_path)
+    gaik = [
+        line
+        for line in (tmp_path / "requirements.txt").read_text().splitlines()
+        if line.startswith("gaik")
+    ]
+    assert "gaik[report-writer]>=0.8.2" in gaik
+
+
 def test_requirements_txt_rag_module(tmp_path):
     bp = _load_example("rag_workflow_blueprint.json")
     scaffold_poc(bp, tmp_path)
